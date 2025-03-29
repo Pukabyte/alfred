@@ -4,7 +4,7 @@ services:
   alfred:
     restart: unless-stopped
     container_name: alfred
-    build: .
+    image: ghcr.io/pukabyte/alfred:latest
     hostname: alfred
     user: "1000:1001"
     environment:
