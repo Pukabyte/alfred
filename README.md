@@ -41,8 +41,17 @@ Alfred is a Docker container that monitors symlinks in a specified directory and
    git clone https://github.com/pukabyte/alfred.git
    cd alfred
    ```
+2. Create .env file:
+   ```bash
+   mv .env.example .env
+   ```
 
-3. Build and start the container:
+3. Create docker-compose.yml:   
+   ```bash
+   mv docker-compose-example.yml docker-compose.yml
+   ```
+
+4. Build and start the container:
    ```bash
    docker-compose up -d
    ```
