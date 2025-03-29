@@ -49,11 +49,14 @@ def create_table(conn):
 # Updated function to find and delete non-linked files
 def find_non_linked_files(torrents_directories, symlink_directory, dry_run=False, no_confirm=False, exclude_patterns=[]):
     dst_links = set()
+    # First, scan all symlinks and add them to the database
+    logger.info("🔍 Scanning for existing symlinks...")
     for root, dirs, files in os.walk(symlink_directory):
         for entry in files:
             dst_path = os.path.join(root, entry)
             if os.path.islink(dst_path):
                 dst_links.add(os.path.realpath(dst_path))
+                upsert_symlink(dst_path)  # Add existing symlink to database
 
     used_files = set()
     all_files = set()
