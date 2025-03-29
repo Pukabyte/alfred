@@ -1,7 +1,5 @@
 # Environment variables
 .env
-
-# Docker
 docker-compose.yml
 
 # Python
