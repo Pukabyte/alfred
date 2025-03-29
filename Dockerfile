@@ -1,15 +1,24 @@
-FROM python:3.9-slim
+FROM --platform=$BUILDPLATFORM python:3.11-slim
 
-# Install required packages
-RUN apt-get update && apt-get install -y \
-    inotify-tools \
-    && rm -rf /var/lib/apt/lists/*
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first to leverage Docker cache
 COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the script
@@ -18,5 +27,5 @@ COPY alfred.py .
 # Create volume for database persistence
 VOLUME ["/app/data"]
 
-# Run the script
+# Command to run the application
 CMD ["python", "alfred.py", "--no-confirm"] 
