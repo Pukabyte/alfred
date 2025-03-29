@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  alfred:
+    restart: unless-stopped
+    container_name: alfred
+    image: ghcr.io/pukabyte/alfred:latest
+    hostname: alfred
+    user: "1000:1000"
+    environment:
+      - TZ=Etc/UTC
+    networks:
+      - saltbox
+    labels:
+      com.github.saltbox.saltbox_managed: true
+    volumes:
+      - /opt/alfred:/app/data
+      - ${SYMLINK_DIR:-/mnt/plex}:${SYMLINK_DIR:-/mnt/plex}
+      - ${TORRENTS_DIR:-/mnt/remote/realdebrid/__all__}:${TORRENTS_DIR:-/mnt/remote/realdebrid/__all__}
+      - /etc/localtime:/etc/localtime:ro
+
+networks:
+  saltbox:
+    external: true 

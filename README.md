@@ -13,18 +13,23 @@ Alfred is a Docker container that monitors symlinks in a specified directory and
 
 ## How It Works
 
-1. **Symlink Monitoring**:
+1. **Delete Non-linked files**
+   - Scan all current symlinks in symlinks directory
+   - Cross reference with realdebrid mount directory
+   - Deletes all files that are not currently symlinked 
+
+2. **Symlink Monitoring**:
    - Watches a specified directory for symlink changes
    - Tracks all symlinks and their target files in a SQLite database
    - Maintains a reference count for each target file
 
-2. **Event Handling**:
+3. **Event Handling**:
    - **Created**: When a new symlink is created, it's added to the database
    - **Modified**: When a symlink is modified, the database is updated
    - **Deleted**: When a symlink is deleted, the reference count is decremented
    - **Moved**: Handles both the old location deletion and new location creation
 
-3. **Target Management**:
+4. **Target Management**:
    - When a symlink is deleted, Alfred checks the reference count
    - If the reference count reaches zero, the target file is deleted
    - This prevents orphaned files while preserving files still in use
@@ -33,7 +38,7 @@ Alfred is a Docker container that monitors symlinks in a specified directory and
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusernampukabytee/alfred.git
+   git clone https://github.com/pukabyte/alfred.git
    cd alfred
    ```
 
@@ -54,9 +59,10 @@ You can set these in your `.env` file or directly in docker-compose.yml.
 ## Usage
 
 The container runs automatically once started. It will:
-1. Monitor the specified directory for symlink changes
-2. Track all symlinks and their targets
-3. Delete target files when their last symlink is removed
+1. Delete files from RD mount that are not referenced by symlinks (requires a mount point that allows deletes eg. zurg)
+2. Monitor the specified directory for symlink changes
+3. Track all symlinks and their targets
+4. Delete target files when their last symlink is removed
 
 ### Command Line Arguments
 
@@ -73,13 +79,11 @@ services:
   alfred:
     restart: unless-stopped
     container_name: alfred
-    build: .
+    image: ghcr.io/pukabyte/alfred:latest
     hostname: alfred
-    user: "1000:1001"
+    user: "1000:1000"
     environment:
       - TZ=Etc/UTC
-      - SYMLINK_DIR=${SYMLINK_DIR:-/mnt/plex}
-      - TORRENTS_DIR=${TORRENTS_DIR:-/mnt/remote/realdebrid/__all__}
     networks:
       - saltbox
     labels:
