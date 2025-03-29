@@ -100,7 +100,7 @@ services:
     volumes:
       - /opt/alfred:/app/data
       - ${SYMLINK_DIR:-/mnt/plex}:${SYMLINK_DIR:-/mnt/plex}
-      - ${TORRENTS_DIR:-/mnt/remote/realdebrid/__all__}:${TORRENTS_DIR:-/mnt/remote/realddebrid/__all__}
+      - ${TORRENTS_DIR:-/mnt/remote/realdebrid/__all__}:${TORRENTS_DIR:-/mnt/remote/realdebrid/__all__}
       - /etc/localtime:/etc/localtime:ro
 ```
 

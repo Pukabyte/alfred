@@ -46,17 +46,77 @@ def create_table(conn):
     ''')
     conn.commit()
 
+# Function to upsert symlinks with reference counting
+def upsert_symlink(file_path, conn=None):
+    if os.path.islink(file_path):
+        target = os.readlink(file_path)
+        if not os.path.exists(target):
+            logger.warning(f"⚠️ Target {target} does not exist for symlink {file_path}")
+            return
+        try:
+            should_close = False
+            if conn is None:
+                conn = sqlite3.connect(db_file)
+                should_close = True
+            
+            cursor = conn.cursor()
+            # Check if the symlink already exists
+            cursor.execute('SELECT symlink FROM symlinks WHERE symlink = ?', (file_path,))
+            symlink_row = cursor.fetchone()
+            if symlink_row:
+                logger.info(f"🔗 Symlink {file_path} already exists in the database.")
+            else:
+                # Check if the target exists
+                cursor.execute('SELECT ref_count FROM symlinks WHERE target = ?', (target,))
+                target_row = cursor.fetchone()
+                if target_row:
+                    ref_count = target_row[0] + 1
+                    cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
+                else:
+                    ref_count = 1
+                cursor.execute('INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', (file_path, target, ref_count))
+            
+            if should_close:
+                conn.commit()
+                conn.close()
+            
+            logger.info(f"🔗 Added/Updated symlink: {file_path} -> {target}")
+        except Exception as e:
+            logger.error(f"Error updating symlink {file_path}: {e}")
+            logger.debug(traceback.format_exc())
+            if should_close:
+                conn.close()
+
 # Updated function to find and delete non-linked files
 def find_non_linked_files(torrents_directories, symlink_directory, dry_run=False, no_confirm=False, exclude_patterns=[]):
     dst_links = set()
     # First, scan all symlinks and add them to the database
     logger.info("🔍 Scanning for existing symlinks...")
-    for root, dirs, files in os.walk(symlink_directory):
-        for entry in files:
-            dst_path = os.path.join(root, entry)
-            if os.path.islink(dst_path):
-                dst_links.add(os.path.realpath(dst_path))
-                upsert_symlink(dst_path)  # Add existing symlink to database
+    
+    # Open a single database connection for batch operations
+    with sqlite3.connect(db_file) as conn:
+        # Enable WAL mode for better performance
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA synchronous=NORMAL')
+        conn.execute('PRAGMA cache_size=10000')
+        
+        # Start transaction
+        conn.execute('BEGIN TRANSACTION')
+        
+        try:
+            for root, dirs, files in os.walk(symlink_directory):
+                for entry in files:
+                    dst_path = os.path.join(root, entry)
+                    if os.path.islink(dst_path):
+                        dst_links.add(os.path.realpath(dst_path))
+                        upsert_symlink(dst_path, conn)
+            
+            # Commit the transaction
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error during batch symlink processing: {e}")
+            raise
 
     used_files = set()
     all_files = set()
@@ -118,37 +178,6 @@ def find_non_linked_files(torrents_directories, symlink_directory, dry_run=False
 
     logger.info(f"Total files checked: {total_files}")
     logger.info(f"Total files deleted: {deleted_files}")
-
-# Function to upsert symlinks with reference counting
-def upsert_symlink(file_path):
-    if os.path.islink(file_path):
-        target = os.readlink(file_path)
-        if not os.path.exists(target):
-            logger.warning(f"⚠️ Target {target} does not exist for symlink {file_path}")
-            return
-        try:
-            with sqlite3.connect(db_file) as conn:
-                cursor = conn.cursor()
-                # Check if the symlink already exists
-                cursor.execute('SELECT symlink FROM symlinks WHERE symlink = ?', (file_path,))
-                symlink_row = cursor.fetchone()
-                if symlink_row:
-                    logger.info(f"🔗 Symlink {file_path} already exists in the database.")
-                else:
-                    # Check if the target exists
-                    cursor.execute('SELECT ref_count FROM symlinks WHERE target = ?', (target,))
-                    target_row = cursor.fetchone()
-                    if target_row:
-                        ref_count = target_row[0] + 1
-                        cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
-                    else:
-                        ref_count = 1
-                    cursor.execute('INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', (file_path, target, ref_count))
-                conn.commit()
-            logger.info(f"🔗 Added/Updated symlink: {file_path} -> {target}")
-        except Exception as e:
-            logger.error(f"Error updating symlink {file_path}: {e}")
-            logger.debug(traceback.format_exc())
 
 # Function to delete missing symlinks' targets
 def delete_missing_target(symlink, dry_run):
