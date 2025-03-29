@@ -7,6 +7,8 @@ services:
     image: ghcr.io/pukabyte/alfred:latest
     hostname: alfred
     user: "1000:1000"
+    env_file:
+      - .env
     environment:
       - TZ=Etc/UTC
     networks:
