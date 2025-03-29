@@ -99,8 +99,8 @@ services:
       com.github.saltbox.saltbox_managed: true
     volumes:
       - /opt/alfred:/app/data
-      - ${SYMLINK_DIR:-/mnt/plex}:${SYMLINK_DIR:-/mnt/plex}
-      - ${TORRENTS_DIR:-/mnt/remote/realdebrid/__all__}:${TORRENTS_DIR:-/mnt/remote/realdebrid/__all__}
+      - ${SYMLINK_DIR}:${SYMLINK_DIR}
+      - ${TORRENTS_DIR}:${TORRENTS_DIR}
       - /etc/localtime:/etc/localtime:ro
 ```
 

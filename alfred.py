@@ -10,8 +10,15 @@ from watchdog.events import FileSystemEventHandler
 from fnmatch import fnmatch
 
 # Get directories from environment variables
-symlink_directory = os.getenv('SYMLINK_DIR', '/mnt/plex')
-torrents_directories = os.getenv('TORRENTS_DIR', '/mnt/remote/zurgtrue/__all__').split(',')
+symlink_directory = os.getenv('SYMLINK_DIR')
+torrents_directories = os.getenv('TORRENTS_DIR')
+
+if not symlink_directory or not torrents_directories:
+    logger.error("Required environment variables SYMLINK_DIR and TORRENTS_DIR must be set")
+    sys.exit(1)
+
+# Convert torrents_directories to list and clean up paths
+torrents_directories = [path.strip() for path in torrents_directories.split(',') if path.strip()]
 
 # Set up the SQLite database file
 db_file = '/app/data/symlinks.db'
