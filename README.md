@@ -101,7 +101,6 @@ services:
       - /opt/alfred:/app/data
       - ${SYMLINK_DIR}:${SYMLINK_DIR}
       - ${TORRENTS_DIR}:${TORRENTS_DIR}
-      - /etc/localtime:/etc/localtime:ro
 ```
 
 ## Logging
