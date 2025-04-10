@@ -31,7 +31,8 @@ symlink_manager.log
 
 # Database
 *.db
-symlinks.db
+symlinks.db-shm
+symlinks.db-wal
 
 # Docker
 .docker/

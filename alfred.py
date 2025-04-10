@@ -10,14 +10,25 @@ from watchdog.events import FileSystemEventHandler
 from fnmatch import fnmatch
 
 # Get directories from environment variables
-symlink_directory = os.getenv('SYMLINK_DIR')
+symlink_directories = os.getenv('SYMLINK_DIR')
 torrents_directories = os.getenv('TORRENTS_DIR')
+delete_behavior = os.getenv('DELETE_BEHAVIOR', 'files').lower()
+scan_interval = int(os.getenv('SCAN_INTERVAL', '720'))  # Default to 12 hours if not set
 
-if not symlink_directory or not torrents_directories:
+if not symlink_directories or not torrents_directories:
     logger.error("Required environment variables SYMLINK_DIR and TORRENTS_DIR must be set")
     sys.exit(1)
 
-# Convert torrents_directories to list and clean up paths
+if delete_behavior not in ['files', 'folders']:
+    logger.error("DELETE_BEHAVIOR must be either 'files' or 'folders'")
+    sys.exit(1)
+
+if scan_interval < 0:
+    logger.error("SCAN_INTERVAL must be a positive number or 0 to disable")
+    sys.exit(1)
+
+# Convert directories to lists and clean up paths
+symlink_directories = [path.strip() for path in symlink_directories.split(',') if path.strip()]
 torrents_directories = [path.strip() for path in torrents_directories.split(',') if path.strip()]
 
 # Set up the SQLite database file
@@ -31,15 +42,6 @@ logger.add(
     colorize=True,
 )
 
-# Add file handler for logging
-logger.add(
-    '/app/data/symlink_manager.log',
-    rotation='10 MB',
-    retention='10 days',
-    level='INFO',
-    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
-)
-
 # Create table if it doesn't exist
 def create_table(conn):
     cursor = conn.cursor()
@@ -49,6 +51,13 @@ def create_table(conn):
         symlink TEXT UNIQUE,
         target TEXT,
         ref_count INTEGER DEFAULT 1
+    )
+    ''')
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS scan_times (
+        id INTEGER PRIMARY KEY,
+        last_scan_time INTEGER,
+        scan_interval INTEGER
     )
     ''')
     conn.commit()
@@ -95,7 +104,7 @@ def upsert_symlink(file_path, conn=None):
                 conn.close()
 
 # Updated function to find and delete non-linked files
-def find_non_linked_files(torrents_directories, symlink_directory, dry_run=False, no_confirm=False, exclude_patterns=[]):
+def find_non_linked_files(torrents_directories, symlink_directories, dry_run=False, no_confirm=False, exclude_patterns=[]):
     dst_links = set()
     # First, scan all symlinks and add them to the database
     logger.info("🔍 Scanning for existing symlinks...")
@@ -111,12 +120,16 @@ def find_non_linked_files(torrents_directories, symlink_directory, dry_run=False
         conn.execute('BEGIN TRANSACTION')
         
         try:
-            for root, dirs, files in os.walk(symlink_directory):
-                for entry in files:
-                    dst_path = os.path.join(root, entry)
-                    if os.path.islink(dst_path):
-                        dst_links.add(os.path.realpath(dst_path))
-                        upsert_symlink(dst_path, conn)
+            for symlink_directory in symlink_directories:
+                if not os.path.exists(symlink_directory):
+                    logger.warning(f"⚠️ Symlink directory {symlink_directory} does not exist or is not accessible.")
+                    continue
+                for root, _, files in os.walk(symlink_directory):
+                    for entry in files:
+                        dst_path = os.path.join(root, entry)
+                        if os.path.islink(dst_path):
+                            dst_links.add(os.path.realpath(dst_path))
+                            upsert_symlink(dst_path, conn)
             
             # Commit the transaction
             conn.commit()
@@ -133,7 +146,7 @@ def find_non_linked_files(torrents_directories, symlink_directory, dry_run=False
             logger.warning(f"⚠️ Directory {torrents_directory} does not exist or is not accessible.")
             continue
 
-        for root, dirs, files in os.walk(torrents_directory):
+        for root, _, files in os.walk(torrents_directory):
             # Skip excluded patterns
             if any(fnmatch(root, pattern) for pattern in exclude_patterns):
                 continue
@@ -163,28 +176,42 @@ def find_non_linked_files(torrents_directories, symlink_directory, dry_run=False
             logger.info(f"File {file_path} is not used!")
 
             if dry_run:
-                logger.info(f"🟠 Dry-run: Would delete file: {file_path}")
+                if delete_behavior == 'files':
+                    logger.info(f"🟠 Dry-run: Would delete file: {file_path}")
+                else:
+                    parent_dir = os.path.dirname(file_path)
+                    logger.info(f"🟠 Dry-run: Would delete parent folder: {parent_dir}")
             else:
                 if no_confirm:
                     response = 'y'
                 else:
-                    response = input(f"Do you want to delete this file '{file_path}'? (y/n): ")
+                    if delete_behavior == 'files':
+                        response = input(f"Do you want to delete this file '{file_path}'? (y/n): ")
+                    else:
+                        parent_dir = os.path.dirname(file_path)
+                        response = input(f"Do you want to delete the parent folder '{parent_dir}'? (y/n): ")
                 if response.lower() == 'y':
                     try:
-                        os.remove(file_path)
+                        if delete_behavior == 'files':
+                            os.remove(file_path)
+                            logger.info(f"File {file_path} deleted!")
+                        else:
+                            parent_dir = os.path.dirname(file_path)
+                            import shutil
+                            shutil.rmtree(parent_dir)
+                            logger.info(f"Parent folder {parent_dir} deleted!")
                         deleted_files += 1
-                        logger.info(f"File {file_path} deleted!")
                     except Exception as e:
-                        logger.error(f"Error deleting file {file_path}: {e}")
+                        logger.error(f"Error deleting {'file' if delete_behavior == 'files' else 'parent folder'}: {e}")
                         logger.error(traceback.format_exc())
                 else:
-                    logger.info(f"File {file_path} not deleted!")
+                    logger.info(f"{'File' if delete_behavior == 'files' else 'Parent folder'} not deleted!")
         else:
             # Skip directories or other non-file paths
             continue
 
     logger.info(f"Total files checked: {total_files}")
-    logger.info(f"Total files deleted: {deleted_files}")
+    logger.info(f"Total {'files' if delete_behavior == 'files' else 'parent folders'} deleted: {deleted_files}")
 
 # Function to delete missing symlinks' targets
 def delete_missing_target(symlink, dry_run):
@@ -196,17 +223,26 @@ def delete_missing_target(symlink, dry_run):
             target, ref_count = row
             ref_count -= 1
             if ref_count <= 0:
-                # Delete the target file if it exists
+                # Delete the target if it exists
                 if os.path.exists(target):
                     if dry_run:
                         logger.info(f"🟠 Dry-run: Would delete target: {target}")
                     else:
                         try:
-                            if os.path.isfile(target) or os.path.islink(target):
-                                os.remove(target)
-                                logger.info(f"❌ Deleted target: {target}")
-                            else:
-                                logger.info(f"Target {target} is not a file. Skipping deletion.")
+                            if delete_behavior == 'files':
+                                if os.path.isfile(target) or os.path.islink(target):
+                                    os.remove(target)
+                                    logger.info(f"❌ Deleted file: {target}")
+                                else:
+                                    logger.info(f"Target {target} is not a file. Skipping deletion.")
+                            else:  # folders
+                                parent_dir = os.path.dirname(target)
+                                if os.path.exists(parent_dir):
+                                    import shutil
+                                    shutil.rmtree(parent_dir)
+                                    logger.info(f"❌ Deleted parent folder: {parent_dir}")
+                                else:
+                                    logger.info(f"Parent folder {parent_dir} does not exist. Skipping deletion.")
                         except Exception as e:
                             logger.error(f"Error deleting target {target}: {e}")
                             logger.error(traceback.format_exc())
@@ -225,10 +261,13 @@ def delete_missing_target(symlink, dry_run):
 class SymlinkEventHandler(FileSystemEventHandler):
     def __init__(self, dry_run):
         self.dry_run = dry_run
+        logger.info("🔍 Real-time symlink monitoring initialized")
 
     def on_created(self, event):
         try:
+            logger.debug(f"📝 Detected creation event: {event.src_path}")
             if os.path.islink(event.src_path):
+                logger.info(f"🔗 New symlink created: {event.src_path}")
                 upsert_symlink(event.src_path)
         except Exception as e:
             logger.error(f"Error handling creation of {event.src_path}: {e}")
@@ -236,7 +275,9 @@ class SymlinkEventHandler(FileSystemEventHandler):
 
     def on_modified(self, event):
         try:
+            logger.debug(f"📝 Detected modification event: {event.src_path}")
             if os.path.islink(event.src_path):
+                logger.info(f"🔗 Symlink modified: {event.src_path}")
                 upsert_symlink(event.src_path)
         except Exception as e:
             logger.error(f"Error handling modification of {event.src_path}: {e}")
@@ -244,31 +285,127 @@ class SymlinkEventHandler(FileSystemEventHandler):
 
     def on_deleted(self, event):
         try:
-            delete_missing_target(event.src_path, self.dry_run)
+            logger.debug(f"📝 Detected deletion event: {event.src_path}")
+            if os.path.islink(event.src_path):
+                logger.info(f"🔗 Symlink deleted: {event.src_path}")
+                delete_missing_target(event.src_path, self.dry_run)
         except Exception as e:
             logger.error(f"Error handling deletion of {event.src_path}: {e}")
             logger.debug(traceback.format_exc())
 
     def on_moved(self, event):
         try:
-            # Handle the deletion of the old symlink
-            delete_missing_target(event.src_path, self.dry_run)
-            # Handle the creation of the new symlink
+            logger.debug(f"📝 Detected move event: {event.src_path} -> {event.dest_path}")
+            
+            # First handle the new location
             if os.path.islink(event.dest_path):
-                upsert_symlink(event.dest_path)
+                logger.info(f"🔗 Symlink moved to: {event.dest_path}")
+                # Get the target before updating the database
+                target = os.readlink(event.dest_path)
+                # Update the database with the new location
+                with sqlite3.connect(db_file) as conn:
+                    cursor = conn.cursor()
+                    # Check if the target exists in the database
+                    cursor.execute('SELECT ref_count FROM symlinks WHERE target = ?', (target,))
+                    target_row = cursor.fetchone()
+                    if target_row:
+                        # Update the symlink path and keep the same ref_count
+                        cursor.execute('UPDATE symlinks SET symlink = ? WHERE target = ?', (event.dest_path, target))
+                        logger.info(f"🔄 Updated symlink path in database: {event.dest_path}")
+                    else:
+                        # If target doesn't exist, add it as a new entry
+                        upsert_symlink(event.dest_path)
+                    conn.commit()
+            
+            # Then handle the old location
+            if os.path.exists(event.src_path) and os.path.islink(event.src_path):
+                logger.info(f"🔗 Cleaning up old symlink: {event.src_path}")
+                delete_missing_target(event.src_path, self.dry_run)
+            
         except Exception as e:
             logger.error(f"Error handling movement from {event.src_path} to {event.dest_path}: {e}")
             logger.debug(traceback.format_exc())
 
-# Main function
+def has_children(directory):
+    """Check if a directory has any children (files or subdirectories)."""
+    try:
+        return any(os.scandir(directory))
+    except Exception as e:
+        logger.error(f"Error scanning directory {directory}: {e}")
+        return False
+
+def wait_for_children(directories):
+    """Wait until all directories have children."""
+    while True:
+        all_have_children = True
+        for directory in directories:
+            if not has_children(directory):
+                logger.info(f"⚠️ Directory {directory} is empty. Waiting for content...")
+                all_have_children = False
+                break
+        
+        if all_have_children:
+            logger.info("✅ All directories have content. Proceeding...")
+            return True
+        
+        time.sleep(60)  # Wait 1 minute before checking again
+
+def get_last_scan_time(conn):
+    cursor = conn.cursor()
+    cursor.execute('SELECT last_scan_time, scan_interval FROM scan_times ORDER BY id DESC LIMIT 1')
+    result = cursor.fetchone()
+    return result if result else (None, None)
+
+def update_scan_time(conn, scan_interval):
+    cursor = conn.cursor()
+    current_time = int(time.time())
+    cursor.execute('INSERT INTO scan_times (last_scan_time, scan_interval) VALUES (?, ?)', 
+                  (current_time, scan_interval))
+    conn.commit()
+
+def should_perform_scan(conn, scan_interval):
+    if scan_interval == 0:
+        return True  # Always scan if interval is 0
+    
+    last_scan_time, last_interval = get_last_scan_time(conn)
+    if not last_scan_time:
+        return True  # No previous scan, perform initial scan
+    
+    current_time = int(time.time())
+    time_since_last_scan = current_time - last_scan_time
+    return time_since_last_scan >= (scan_interval * 60)  # Convert minutes to seconds
+
+def background_scan(dry_run, no_confirm, exclude_patterns):
+    """Run find_non_linked_files in the background at specified intervals."""
+    while True:
+        try:
+            with sqlite3.connect(db_file) as conn:
+                if should_perform_scan(conn, scan_interval):
+                    logger.info("🔄 Starting background scan...")
+                    find_non_linked_files(
+                        torrents_directories,
+                        symlink_directories,
+                        dry_run,
+                        no_confirm,
+                        exclude_patterns
+                    )
+                    update_scan_time(conn, scan_interval)
+            
+            time.sleep(60)  # Check every minute if it's time to scan
+        except Exception as e:
+            logger.error(f"Error during background scan: {e}")
+            logger.error(traceback.format_exc())
+            time.sleep(60)  # Wait 1 minute before retrying on error
+
 def main(dry_run, no_confirm, exclude_patterns):
     # Validate paths and permissions
-    if not os.path.exists(symlink_directory):
-        logger.error(f"Symlink directory {symlink_directory} does not exist.")
-        sys.exit(1)
-    if not os.access(symlink_directory, os.W_OK):
-        logger.error(f"No write permission for {symlink_directory}")
-        sys.exit(1)
+    for symlink_directory in symlink_directories:
+        if not os.path.exists(symlink_directory):
+            logger.error(f"Symlink directory {symlink_directory} does not exist.")
+            sys.exit(1)
+        if not os.access(symlink_directory, os.W_OK):
+            logger.error(f"No write permission for {symlink_directory}")
+            sys.exit(1)
     for torrents_directory in torrents_directories:
         if not os.path.exists(torrents_directory):
             logger.error(f"Torrents directory {torrents_directory} does not exist.")
@@ -277,24 +414,57 @@ def main(dry_run, no_confirm, exclude_patterns):
             logger.error(f"No write permission for {torrents_directory}")
             sys.exit(1)
 
+    # Validate DELETE_BEHAVIOR
+    if delete_behavior not in ['files', 'folders']:
+        logger.error("DELETE_BEHAVIOR must be either 'files' or 'folders'")
+        sys.exit(1)
+
     logger.info("🔄 Initializing database...")
     with sqlite3.connect(db_file) as conn:
         create_table(conn)
+        
+        # Check if we need to perform a full scan
+        if should_perform_scan(conn, scan_interval):
+            logger.info("⏳ Waiting for content in torrents directories...")
+            wait_for_children(torrents_directories)
 
-    logger.info("🟢 Running startup script...")
-    find_non_linked_files(
-        torrents_directories,
-        symlink_directory,
-        dry_run,
-        no_confirm,
-        exclude_patterns
-    )
+            logger.info(f"🟢 Running startup script with DELETE_BEHAVIOR={delete_behavior}...")
+            find_non_linked_files(
+                torrents_directories,
+                symlink_directories,
+                dry_run,
+                no_confirm,
+                exclude_patterns
+            )
+            update_scan_time(conn, scan_interval)
+        else:
+            last_scan_time, _ = get_last_scan_time(conn)
+            next_scan = last_scan_time + (scan_interval * 60)
+            time_until_next = next_scan - int(time.time())
+            logger.info(f"⏳ Skipping initial scan. Next scan in {time_until_next//60} minutes")
+
+    logger.info("")
+    logger.info("🔍 Setting up real-time monitoring...")
+    logger.info(f"📁 Monitoring symlink directories: {', '.join(symlink_directories)}")
+    logger.info(f"📁 Monitoring torrent directories: {', '.join(torrents_directories)}")
+    logger.info("")
+
+    # Start background scan if interval is set
+    if scan_interval > 0:
+        import threading
+        background_thread = threading.Thread(
+            target=background_scan,
+            args=(dry_run, no_confirm, exclude_patterns),
+            daemon=True
+        )
+        background_thread.start()
+        logger.info(f"🔄 Background scanning started with interval of {scan_interval} minutes")
 
     event_handler = SymlinkEventHandler(dry_run)
     observer = Observer()
-    observer.schedule(event_handler, path=symlink_directory, recursive=True)
+    for symlink_directory in symlink_directories:
+        observer.schedule(event_handler, path=symlink_directory, recursive=True)
     observer.start()
-    logger.info("🔍 Real-time scanning started. Monitoring symlink changes...")
 
     try:
         while True:
