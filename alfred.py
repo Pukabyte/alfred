@@ -38,7 +38,7 @@ db_file = '/app/data/symlinks.db'
 logger.remove()  # Remove default logger
 logger.add(
     sys.stdout,  # Print logs to the console
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <cyan>{message}</cyan>",
+    format="<black>{time:YYYY-MM-DD HH:mm:ss}</black> | <level>{level}</level> | <yellow>{message}</yellow>",
     colorize=True,
 )
 
