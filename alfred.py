@@ -77,10 +77,35 @@ def upsert_symlink(file_path, conn=None):
             
             cursor = conn.cursor()
             # Check if the symlink already exists
-            cursor.execute('SELECT symlink FROM symlinks WHERE symlink = ?', (file_path,))
+            cursor.execute('SELECT target FROM symlinks WHERE symlink = ?', (file_path,))
             symlink_row = cursor.fetchone()
             if symlink_row:
-                logger.info(f"🔗 Symlink {file_path} already exists in the database.")
+                # If the symlink exists but points to a different target, we need to handle that
+                old_target = symlink_row[0]
+                if old_target != target:
+                    # Decrement ref_count for old target
+                    cursor.execute('SELECT ref_count FROM symlinks WHERE target = ?', (old_target,))
+                    old_ref_count = cursor.fetchone()[0]
+                    if old_ref_count > 1:
+                        cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (old_ref_count - 1, old_target))
+                    else:
+                        # If this was the last reference to the old target, delete it
+                        if os.path.exists(old_target):
+                            if delete_behavior == 'files':
+                                os.remove(old_target)
+                                logger.info(f"❌ Deleted old target file: {old_target}")
+                            else:
+                                parent_dir = os.path.dirname(old_target)
+                                if os.path.exists(parent_dir):
+                                    import shutil
+                                    shutil.rmtree(parent_dir)
+                                    logger.info(f"❌ Deleted old target folder: {parent_dir}")
+                        cursor.execute('DELETE FROM symlinks WHERE target = ?', (old_target,))
+                    
+                    # Update the symlink to point to the new target
+                    cursor.execute('UPDATE symlinks SET target = ? WHERE symlink = ?', (target, file_path))
+                else:
+                    logger.info(f"🔗 Symlink {file_path} already exists in the database with the same target.")
             else:
                 # Check if the target exists
                 cursor.execute('SELECT ref_count FROM symlinks WHERE target = ?', (target,))
@@ -88,9 +113,12 @@ def upsert_symlink(file_path, conn=None):
                 if target_row:
                     ref_count = target_row[0] + 1
                     cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
+                    cursor.execute('INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', (file_path, target, ref_count))
+                    logger.info(f"🔄 Incremented ref_count for target {target}, new ref_count is {ref_count}")
                 else:
                     ref_count = 1
-                cursor.execute('INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', (file_path, target, ref_count))
+                    cursor.execute('INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', (file_path, target, ref_count))
+                    logger.info(f"🆕 Created new target entry with ref_count {ref_count}")
             
             if should_close:
                 conn.commit()
@@ -217,29 +245,32 @@ def find_non_linked_files(torrents_directories, symlink_directories, dry_run=Fal
 def delete_missing_target(symlink, dry_run):
     with sqlite3.connect(db_file) as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT target, ref_count FROM symlinks WHERE symlink = ?', (symlink,))
+        # First get the target and check remaining references
+        cursor.execute('SELECT target FROM symlinks WHERE symlink = ?', (symlink,))
         row = cursor.fetchone()
         if row:
-            target, ref_count = row
-            ref_count -= 1
-            if ref_count <= 0:
-                # Delete the target if it exists
+            target = row[0]
+            logger.info(f"🔍 Found target {target} for symlink {symlink}")
+            
+            # Check how many symlinks point to this target
+            cursor.execute('SELECT COUNT(*) FROM symlinks WHERE target = ?', (target,))
+            total_refs = cursor.fetchone()[0]
+            logger.info(f"🔍 Target {target} has {total_refs} references")
+            
+            if total_refs == 1:
+                # This is the last reference, delete the target first
+                logger.info(f"🎯 This is the last reference to {target}, will delete target")
                 if os.path.exists(target):
                     if dry_run:
                         logger.info(f"🟠 Dry-run: Would delete target: {target}")
                     else:
                         try:
                             if delete_behavior == 'files':
-                                if os.path.isfile(target):
-                                    os.remove(target)
-                                    logger.info(f"❌ Deleted file: {target}")
-                                elif os.path.isdir(target):
-                                    import shutil
-                                    shutil.rmtree(target)
-                                    logger.info(f"❌ Deleted directory: {target}")
-                                else:
-                                    logger.info(f"Target {target} is not a file or directory. Skipping deletion.")
+                                # Delete the target file directly
+                                os.remove(target)
+                                logger.info(f"❌ Deleted file: {target}")
                             else:  # folders
+                                # Delete the parent directory of the target
                                 parent_dir = os.path.dirname(target)
                                 if os.path.exists(parent_dir):
                                     import shutil
@@ -250,16 +281,49 @@ def delete_missing_target(symlink, dry_run):
                         except Exception as e:
                             logger.error(f"Error deleting target {target}: {e}")
                             logger.error(traceback.format_exc())
+                            return  # Don't commit if deletion failed
+                else:
+                    logger.info(f"Target {target} does not exist. Skipping deletion.")
+                
+                # Remove all entries for this target from the database
                 cursor.execute('DELETE FROM symlinks WHERE target = ?', (target,))
-                logger.info(f"❌ Removed symlink entry from database: {symlink} (was pointing to {target})")
+                logger.info(f"❌ Removed all database entries for target: {target}")
             else:
-                # Update ref_count and remove symlink entry
-                cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
+                # Just remove this symlink entry
                 cursor.execute('DELETE FROM symlinks WHERE symlink = ?', (symlink,))
-                logger.info(f"🔄 Decremented ref_count for target {target}, new ref_count is {ref_count}")
+                logger.info(f"🔄 Target {target} still has {total_refs - 1} references")
+            
             conn.commit()
         else:
-            logger.warning(f"⚠️ Symlink {symlink} not found in the database.")
+            logger.warning(f"⚠️ No database entry found for symlink {symlink}")
+            # If symlink not found in database, try to get its target and delete it
+            try:
+                if os.path.islink(symlink):
+                    target = os.readlink(symlink)
+                    if os.path.exists(target):
+                        if dry_run:
+                            logger.info(f"🟠 Dry-run: Would delete target: {target}")
+                        else:
+                            try:
+                                if delete_behavior == 'files':
+                                    # Delete the target file directly
+                                    os.remove(target)
+                                    logger.info(f"❌ Deleted file: {target}")
+                                else:  # folders
+                                    # Delete the parent directory of the target
+                                    parent_dir = os.path.dirname(target)
+                                    if os.path.exists(parent_dir):
+                                        import shutil
+                                        shutil.rmtree(parent_dir)
+                                        logger.info(f"❌ Deleted parent folder: {parent_dir}")
+                                    else:
+                                        logger.info(f"Parent folder {parent_dir} does not exist. Skipping deletion.")
+                            except Exception as e:
+                                logger.error(f"Error deleting target {target}: {e}")
+                                logger.error(traceback.format_exc())
+            except Exception as e:
+                logger.error(f"Error handling symlink {symlink}: {e}")
+                logger.error(traceback.format_exc())
 
 # Event handler for file system events
 class SymlinkEventHandler(FileSystemEventHandler):
@@ -290,25 +354,45 @@ class SymlinkEventHandler(FileSystemEventHandler):
     def on_deleted(self, event):
         try:
             logger.debug(f"📝 Detected deletion event: {event.src_path}")
-            if os.path.islink(event.src_path):
-                logger.info(f"🔗 Symlink deleted: {event.src_path}")
-                # Get the target before deleting the symlink
-                target = os.readlink(event.src_path)
-                logger.info(f"🔗 Target of deleted symlink: {target}")
-                delete_missing_target(event.src_path, self.dry_run)
-            elif os.path.isfile(event.src_path):
-                logger.info(f"📄 File deleted: {event.src_path}")
-                # Check if this was a target of any symlinks
-                with sqlite3.connect(db_file) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('SELECT symlink FROM symlinks WHERE target = ?', (event.src_path,))
-                    symlinks = cursor.fetchall()
-                    for symlink in symlinks:
-                        logger.info(f"🔗 Removing symlink {symlink[0]} pointing to deleted file")
-                        if os.path.exists(symlink[0]):
-                            os.remove(symlink[0])
-                        cursor.execute('DELETE FROM symlinks WHERE symlink = ?', (symlink[0],))
+            with sqlite3.connect(db_file) as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT target, ref_count FROM symlinks WHERE symlink = ?', (event.src_path,))
+                row = cursor.fetchone()
+                if row:
+                    target, ref_count = row
+                    ref_count -= 1
+                    if ref_count <= 0:
+                        # Delete the target file if it exists
+                        if os.path.exists(target):
+                            if not self.dry_run:
+                                try:
+                                    if delete_behavior == 'files':
+                                        if os.path.isfile(target) or os.path.islink(target):
+                                            os.remove(target)
+                                            logger.info(f"❌ Deleted file: {target}")
+                                        else:
+                                            logger.info(f"Target {target} is not a file. Skipping deletion.")
+                                    else:  # folders
+                                        parent_dir = os.path.dirname(target)
+                                        if os.path.exists(parent_dir):
+                                            import shutil
+                                            shutil.rmtree(parent_dir)
+                                            logger.info(f"❌ Deleted parent folder: {parent_dir}")
+                                        else:
+                                            logger.info(f"Parent folder {parent_dir} does not exist. Skipping deletion.")
+                                except Exception as e:
+                                    logger.error(f"Error deleting target {target}: {e}")
+                                    logger.error(traceback.format_exc())
+                        cursor.execute('DELETE FROM symlinks WHERE target = ?', (target,))
+                        logger.info(f"❌ Removed symlink entry from database: {event.src_path} (was pointing to {target})")
+                    else:
+                        # Update ref_count and remove symlink entry
+                        cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
+                        cursor.execute('DELETE FROM symlinks WHERE symlink = ?', (event.src_path,))
+                        logger.info(f"🔄 Decremented ref_count for target {target}, new ref_count is {ref_count}")
                     conn.commit()
+                else:
+                    logger.debug(f"⚠️ Symlink {event.src_path} not found in the database.")
         except Exception as e:
             logger.error(f"Error handling deletion of {event.src_path}: {e}")
             logger.error(traceback.format_exc())
@@ -329,9 +413,13 @@ class SymlinkEventHandler(FileSystemEventHandler):
                     cursor.execute('SELECT ref_count FROM symlinks WHERE target = ?', (target,))
                     target_row = cursor.fetchone()
                     if target_row:
-                        # Update the symlink path and keep the same ref_count
-                        cursor.execute('UPDATE symlinks SET symlink = ? WHERE target = ?', (event.dest_path, target))
-                        logger.info(f"🔄 Updated symlink path in database: {event.dest_path}")
+                        # Increment ref_count since we're adding a new symlink
+                        ref_count = target_row[0] + 1
+                        cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
+                        # Add the new symlink
+                        cursor.execute('INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', 
+                                     (event.dest_path, target, ref_count))
+                        logger.info(f"🔄 Updated ref_count for target {target}, new ref_count is {ref_count}")
                     else:
                         # If target doesn't exist, add it as a new entry
                         upsert_symlink(event.dest_path)
@@ -340,11 +428,43 @@ class SymlinkEventHandler(FileSystemEventHandler):
             # Then handle the old location
             if os.path.exists(event.src_path) and os.path.islink(event.src_path):
                 logger.info(f"🔗 Cleaning up old symlink: {event.src_path}")
-                delete_missing_target(event.src_path, self.dry_run)
+                # Get the target before deleting
+                target = os.readlink(event.src_path)
+                with sqlite3.connect(db_file) as conn:
+                    cursor = conn.cursor()
+                    # Decrement ref_count
+                    cursor.execute('SELECT ref_count FROM symlinks WHERE target = ?', (target,))
+                    target_row = cursor.fetchone()
+                    if target_row:
+                        ref_count = target_row[0] - 1
+                        if ref_count <= 0:
+                            # Delete the target if it exists
+                            if os.path.exists(target):
+                                if not self.dry_run:
+                                    if delete_behavior == 'files':
+                                        if os.path.isfile(target):
+                                            os.remove(target)
+                                            logger.info(f"❌ Deleted file: {target}")
+                                        elif os.path.isdir(target):
+                                            # For directories, only delete files inside, not the directory itself
+                                            for root, _, files in os.walk(target):
+                                                for file in files:
+                                                    file_path = os.path.join(root, file)
+                                                    if os.path.isfile(file_path):
+                                                        os.remove(file_path)
+                                                        logger.info(f"❌ Deleted file: {file_path}")
+                            cursor.execute('DELETE FROM symlinks WHERE target = ?', (target,))
+                            logger.info(f"❌ Removed symlink entry from database: {event.src_path} (was pointing to {target})")
+                        else:
+                            # Update ref_count and remove symlink entry
+                            cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
+                            cursor.execute('DELETE FROM symlinks WHERE symlink = ?', (event.src_path,))
+                            logger.info(f"🔄 Decremented ref_count for target {target}, new ref_count is {ref_count}")
+                    conn.commit()
             
         except Exception as e:
             logger.error(f"Error handling movement from {event.src_path} to {event.dest_path}: {e}")
-            logger.debug(traceback.format_exc())
+            logger.error(traceback.format_exc())
 
 def has_children(directory):
     """Check if a directory has any children (files or subdirectories)."""
