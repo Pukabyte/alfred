@@ -230,11 +230,15 @@ def delete_missing_target(symlink, dry_run):
                     else:
                         try:
                             if delete_behavior == 'files':
-                                if os.path.isfile(target) or os.path.islink(target):
+                                if os.path.isfile(target):
                                     os.remove(target)
                                     logger.info(f"❌ Deleted file: {target}")
+                                elif os.path.isdir(target):
+                                    import shutil
+                                    shutil.rmtree(target)
+                                    logger.info(f"❌ Deleted directory: {target}")
                                 else:
-                                    logger.info(f"Target {target} is not a file. Skipping deletion.")
+                                    logger.info(f"Target {target} is not a file or directory. Skipping deletion.")
                             else:  # folders
                                 parent_dir = os.path.dirname(target)
                                 if os.path.exists(parent_dir):
@@ -288,10 +292,26 @@ class SymlinkEventHandler(FileSystemEventHandler):
             logger.debug(f"📝 Detected deletion event: {event.src_path}")
             if os.path.islink(event.src_path):
                 logger.info(f"🔗 Symlink deleted: {event.src_path}")
+                # Get the target before deleting the symlink
+                target = os.readlink(event.src_path)
+                logger.info(f"🔗 Target of deleted symlink: {target}")
                 delete_missing_target(event.src_path, self.dry_run)
+            elif os.path.isfile(event.src_path):
+                logger.info(f"📄 File deleted: {event.src_path}")
+                # Check if this was a target of any symlinks
+                with sqlite3.connect(db_file) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT symlink FROM symlinks WHERE target = ?', (event.src_path,))
+                    symlinks = cursor.fetchall()
+                    for symlink in symlinks:
+                        logger.info(f"🔗 Removing symlink {symlink[0]} pointing to deleted file")
+                        if os.path.exists(symlink[0]):
+                            os.remove(symlink[0])
+                        cursor.execute('DELETE FROM symlinks WHERE symlink = ?', (symlink[0],))
+                    conn.commit()
         except Exception as e:
             logger.error(f"Error handling deletion of {event.src_path}: {e}")
-            logger.debug(traceback.format_exc())
+            logger.error(traceback.format_exc())
 
     def on_moved(self, event):
         try:
