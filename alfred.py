@@ -60,6 +60,24 @@ def create_table(conn):
         scan_interval INTEGER
     )
     ''')
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS deletions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symlink TEXT NOT NULL,
+        target TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        reason TEXT
+    )
+    ''')
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS metrics_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        total_symlinks INTEGER,
+        unique_targets INTEGER,
+        total_deletions INTEGER
+    )
+    ''')
     conn.commit()
 
 # Function to upsert symlinks with reference counting
@@ -223,11 +241,22 @@ def find_non_linked_files(torrents_directories, symlink_directories, dry_run=Fal
                         if delete_behavior == 'files':
                             os.remove(file_path)
                             logger.info(f"File {file_path} deleted!")
+                            # Record deletion
+                            cursor = conn.cursor()
+                            cursor.execute('''
+                                INSERT INTO deletions (symlink, target, timestamp, reason)
+                                VALUES (?, ?, ?, ?)
+                            ''', (file_path, file_path, int(time.time()), 'unused_file'))
                         else:
                             parent_dir = os.path.dirname(file_path)
                             import shutil
                             shutil.rmtree(parent_dir)
                             logger.info(f"Parent folder {parent_dir} deleted!")
+                            # Record deletion
+                            cursor.execute('''
+                                INSERT INTO deletions (symlink, target, timestamp, reason)
+                                VALUES (?, ?, ?, ?)
+                            ''', (parent_dir, file_path, int(time.time()), 'unused_folder'))
                         deleted_files += 1
                     except Exception as e:
                         logger.error(f"Error deleting {'file' if delete_behavior == 'files' else 'parent folder'}: {e}")
@@ -240,6 +269,10 @@ def find_non_linked_files(torrents_directories, symlink_directories, dry_run=Fal
 
     logger.info(f"Total files checked: {total_files}")
     logger.info(f"Total {'files' if delete_behavior == 'files' else 'parent folders'} deleted: {deleted_files}")
+    
+    # Record metrics after scan
+    with sqlite3.connect(db_file) as conn:
+        update_metrics_if_needed(conn)
 
 # Function to delete missing symlinks' targets
 def delete_missing_target(symlink, dry_run):
@@ -336,7 +369,9 @@ class SymlinkEventHandler(FileSystemEventHandler):
             logger.debug(f"📝 Detected creation event: {event.src_path}")
             if os.path.islink(event.src_path):
                 logger.info(f"🔗 New symlink created: {event.src_path}")
-                upsert_symlink(event.src_path)
+                with sqlite3.connect(db_file) as conn:
+                    upsert_symlink(event.src_path, conn)
+                    update_metrics_if_needed(conn)
         except Exception as e:
             logger.error(f"Error handling creation of {event.src_path}: {e}")
             logger.debug(traceback.format_exc())
@@ -384,18 +419,29 @@ class SymlinkEventHandler(FileSystemEventHandler):
                                     logger.error(f"Error deleting target {target}: {e}")
                                     logger.error(traceback.format_exc())
                         cursor.execute('DELETE FROM symlinks WHERE target = ?', (target,))
+                        # Record deletion with reason
+                        cursor.execute('''
+                            INSERT INTO deletions (symlink, target, timestamp, reason)
+                            VALUES (?, ?, ?, ?)
+                        ''', (event.src_path, target, int(time.time()), 'last_reference_deleted'))
                         logger.info(f"❌ Removed symlink entry from database: {event.src_path} (was pointing to {target})")
                     else:
                         # Update ref_count and remove symlink entry
                         cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
                         cursor.execute('DELETE FROM symlinks WHERE symlink = ?', (event.src_path,))
+                        # Record deletion with reason
+                        cursor.execute('''
+                            INSERT INTO deletions (symlink, target, timestamp, reason)
+                            VALUES (?, ?, ?, ?)
+                        ''', (event.src_path, target, int(time.time()), 'symlink_deleted'))
                         logger.info(f"🔄 Decremented ref_count for target {target}, new ref_count is {ref_count}")
                     conn.commit()
+                    update_metrics_if_needed(conn)
                 else:
                     logger.debug(f"⚠️ Symlink {event.src_path} not found in the database.")
         except Exception as e:
             logger.error(f"Error handling deletion of {event.src_path}: {e}")
-            logger.error(traceback.format_exc())
+            logger.debug(traceback.format_exc())
 
     def on_moved(self, event):
         try:
@@ -462,9 +508,11 @@ class SymlinkEventHandler(FileSystemEventHandler):
                             logger.info(f"🔄 Decremented ref_count for target {target}, new ref_count is {ref_count}")
                     conn.commit()
             
+            conn.commit()
+            update_metrics_if_needed(conn)
         except Exception as e:
             logger.error(f"Error handling movement from {event.src_path} to {event.dest_path}: {e}")
-            logger.error(traceback.format_exc())
+            logger.debug(traceback.format_exc())
 
 def has_children(directory):
     """Check if a directory has any children (files or subdirectories)."""
@@ -537,6 +585,41 @@ def background_scan(dry_run, no_confirm, exclude_patterns):
             logger.error(traceback.format_exc())
             time.sleep(60)  # Wait 1 minute before retrying on error
 
+def record_metrics(conn=None):
+    """Record current metrics to the history table"""
+    should_close = False
+    if conn is None:
+        conn = sqlite3.connect(db_file)
+        should_close = True
+    try:
+        cursor = conn.cursor()
+        # Get current stats
+        cursor.execute('SELECT COUNT(*) as total, COUNT(DISTINCT target) as unique_targets FROM symlinks')
+        total, unique = cursor.fetchone()
+        
+        # Get total deletions
+        cursor.execute('SELECT COUNT(*) FROM deletions')
+        deletions = cursor.fetchone()[0]
+        
+        # Record metrics
+        cursor.execute('''
+        INSERT INTO metrics_history (total_symlinks, unique_targets, total_deletions)
+        VALUES (?, ?, ?)
+        ''', (total, unique, deletions))
+        conn.commit()
+    finally:
+        if should_close:
+            conn.close()
+
+# Update metrics after significant operations
+def update_metrics_if_needed(conn):
+    """Update metrics if significant changes occurred"""
+    try:
+        record_metrics(conn)
+    except Exception as e:
+        logger.error(f"Error recording metrics: {e}")
+        logger.debug(traceback.format_exc())
+
 def main(dry_run, no_confirm, exclude_patterns):
     # Validate paths and permissions
     for symlink_directory in symlink_directories:
@@ -562,6 +645,7 @@ def main(dry_run, no_confirm, exclude_patterns):
     logger.info("🔄 Initializing database...")
     with sqlite3.connect(db_file) as conn:
         create_table(conn)
+        record_metrics(conn)  # Record initial metrics
         
         # Check if we need to perform a full scan
         if should_perform_scan(conn, scan_interval):
@@ -577,6 +661,7 @@ def main(dry_run, no_confirm, exclude_patterns):
                 exclude_patterns
             )
             update_scan_time(conn, scan_interval)
+            update_metrics_if_needed(conn)  # Record metrics after scan
         else:
             last_scan_time, _ = get_last_scan_time(conn)
             next_scan = last_scan_time + (scan_interval * 60)

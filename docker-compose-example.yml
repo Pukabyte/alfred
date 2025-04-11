@@ -7,6 +7,8 @@ services:
     image: ghcr.io/pukabyte/alfred:latest
     hostname: alfred
     user: "1000:1000" # change this to your user and group id
+    ports:
+      - "5000:5000"
     env_file:
       - .env
     environment:

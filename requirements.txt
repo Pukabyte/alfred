@@ -1,2 +1,4 @@
 watchdog==3.0.0
 loguru==0.7.2
+Flask==2.0.1
+Werkzeug==2.0.3

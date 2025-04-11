@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Symlink Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="page-content">
+        <div class="sidebar">
+            <div class="brand">
+                <h3 class="brand-name">Alfred</h3>
+            </div>
+            <ul>
+                <li>
+                    <a href="/dashboard" class="sidebar-link active">
+                        <i class="fa-regular fa-chart-bar fa-fw"></i>
+                        <span>Dashboard</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="/symlinks" class="sidebar-link">
+                        <i class="fa-solid fa-link fa-fw"></i>
+                        <span>Symlinks</span>
+                    </a>
+                </li>
+            </ul>
+            <div class="directory-status-sidebar">
+                <h3>Directory Status</h3>
+                <div class="directory-section">
+                    <h4>Symlink Directories</h4>
+                    <div id="symlink-directories" class="directory-list">
+                        <!-- Will be populated by JavaScript -->
+                    </div>
+                </div>
+                <div class="directory-section">
+                    <h4>Torrent Directories</h4>
+                    <div id="torrent-directories" class="directory-list">
+                        <!-- Will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        <main>
+            <div class="main-content">
+                <div class="title">
+                    <h1>Dashboard</h1>
+                </div>
+                <div class="main-content-boxes">
+                    <div class="box stats-box">
+                        <div class="box-section1">
+                            <div class="box-title">
+                                <h2>Symlink Statistics</h2>
+                                <p>Overview of your symlinks</p>
+                            </div>
+                        </div>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <i class="fa-solid fa-link fa-2x"></i>
+                                <div class="stat-info">
+                                    <h3>Total Symlinks</h3>
+                                    <span id="total-symlinks" class="stat-value">0</span>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fa-solid fa-folder fa-2x"></i>
+                                <div class="stat-info">
+                                    <h3>Unique Targets</h3>
+                                    <span id="unique-targets" class="stat-value">0</span>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fa-solid fa-clock fa-2x"></i>
+                                <div class="stat-info">
+                                    <h3>Last Scan</h3>
+                                    <span id="last-scan" class="stat-value">Never</span>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fa-solid fa-trash fa-2x"></i>
+                                <div class="stat-info">
+                                    <h3>Total Deletions</h3>
+                                    <span id="total-deletions" class="stat-value">0</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="actions-container">
+                            <button class="primary-button" id="run-scan">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                Run Manual Scan
+                            </button>
+                            <div class="scan-status" id="scan-status" style="display: none;"></div>
+                        </div>
+                    </div>
+
+                    <div class="box scan-results-box">
+                        <div class="box-section1">
+                            <div class="box-title">
+                                <h2>Last Scan Results</h2>
+                                <p>Details from the most recent scan</p>
+                            </div>
+                        </div>
+                        <div class="scan-results-grid">
+                            <div class="scan-result-card">
+                                <i class="fa-solid fa-magnifying-glass fa-2x"></i>
+                                <div class="stat-info">
+                                    <h3>Files Checked</h3>
+                                    <span id="files-checked" class="stat-value">0</span>
+                                </div>
+                            </div>
+                            <div class="scan-result-card">
+                                <i class="fa-solid fa-trash fa-2x"></i>
+                                <div class="stat-info">
+                                    <h3>Files Deleted</h3>
+                                    <span id="files-deleted" class="stat-value">0</span>
+                                </div>
+                            </div>
+                            <div class="scan-result-card">
+                                <i class="fa-solid fa-folder-minus fa-2x"></i>
+                                <div class="stat-info">
+                                    <h3>Folders Deleted</h3>
+                                    <span id="folders-deleted" class="stat-value">0</span>
+                                </div>
+                            </div>
+                            <div class="scan-result-card">
+                                <i class="fa-solid fa-clock-rotate-left fa-2x"></i>
+                                <div class="stat-info">
+                                    <h3>Next Scan</h3>
+                                    <span id="next-scan" class="stat-value">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="box metrics-box">
+                        <div class="box-section1">
+                            <div class="box-title">
+                                <h2>Historical Trends</h2>
+                                <p>Track your symlink metrics over time</p>
+                            </div>
+                        </div>
+                        <div class="chart-controls">
+                            <div class="metric-selector">
+                                <label for="metric-select">Metric:</label>
+                                <select id="metric-select">
+                                    <option value="total_symlinks">Total Symlinks</option>
+                                    <option value="unique_targets">Unique Targets</option>
+                                    <option value="total_deletions">Total Deletions</option>
+                                </select>
+                            </div>
+                            <div class="time-range-selector">
+                                <label for="time-range-select">Time Range:</label>
+                                <select id="time-range-select">
+                                    <option value="daily">Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="monthly">Monthly</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="metrics-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="layout.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html> 

@@ -21,11 +21,27 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the script
+# Copy the application files
 COPY alfred.py .
+COPY web/ web/
 
 # Create volume for database persistence
 VOLUME ["/app/data"]
 
-# Command to run the application
-CMD ["python", "alfred.py", "--no-confirm"] 
+# Expose port for web interface
+EXPOSE 5000
+
+# Create startup script
+RUN echo '#!/bin/bash\n\
+# Start alfred.py in the background\n\
+python alfred.py --no-confirm &\n\
+# Wait a moment for database initialization\n\
+sleep 2\n\
+# Start web interface\n\
+python web/app.py\n\
+# If web interface exits, kill alfred.py\n\
+kill %1' > /app/start.sh && \
+chmod +x /app/start.sh
+
+# Command to run both the symlink manager and web interface
+CMD ["/app/start.sh"] 

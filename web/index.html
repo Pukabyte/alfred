@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Symlinks</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="page-content">
+        <div class="sidebar">
+            <div class="brand">
+                <h3 class="brand-name">Alfred</h3>
+            </div>
+            <ul>
+                <li>
+                    <a href="/dashboard" class="sidebar-link">
+                        <i class="fa-regular fa-chart-bar fa-fw"></i>
+                        <span>Dashboard</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="/symlinks" class="sidebar-link active">
+                        <i class="fa-solid fa-link fa-fw"></i>
+                        <span>Symlinks</span>
+                    </a>
+                </li>
+            </ul>
+            <div class="directory-status-sidebar">
+                <h3>Directory Status</h3>
+                <div class="directory-section">
+                    <h4>Symlink Directories</h4>
+                    <div id="symlink-directories" class="directory-list">
+                        <!-- Will be populated by JavaScript -->
+                    </div>
+                </div>
+                <div class="directory-section">
+                    <h4>Torrent Directories</h4>
+                    <div id="torrent-directories" class="directory-list">
+                        <!-- Will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        <main>
+            <div class="main-content">
+                <div class="title">
+                    <h1>Symlinks</h1>
+                </div>
+                <div class="main-content-boxes">
+                    <div class="box">
+                        <div class="box-section1">
+                            <div class="box-title">
+                                <h2>Symlink Management</h2>
+                                <p>View and manage your symlinks</p>
+                            </div>
+                            <div class="stats">
+                                <div class="stat-item">
+                                    <span class="stat-label">Total Symlinks:</span>
+                                    <span id="total-symlinks" class="stat-value">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Unique Targets:</span>
+                                    <span id="unique-targets" class="stat-value">0</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <div class="table-header">
+                                <div class="table-search">
+                                    <input type="search" id="search-input" placeholder="Search symlinks..." />
+                                </div>
+                                <div class="table-controls">
+                                    <div class="pagination-controls">
+                                        <select id="rows-per-page">
+                                            <option value="10">10 rows</option>
+                                            <option value="25">25 rows</option>
+                                            <option value="50">50 rows</option>
+                                            <option value="100">100 rows</option>
+                                        </select>
+                                        <div class="pagination-buttons">
+                                            <button id="prev-page" class="pagination-button">&lt;</button>
+                                            <span id="page-info">Page 1 of 1</span>
+                                            <button id="next-page" class="pagination-button">&gt;</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="loading-animation" id="loading-animation">
+                                <div class="loading-spinner"></div>
+                                <div class="loading-text">Loading symlinks...</div>
+                            </div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th class="sortable" data-column="symlink">Symlink<span class="sort-indicator" data-column="symlink"></span></th>
+                                        <th class="sortable" data-column="target">Target<span class="sort-indicator" data-column="target"></span></th>
+                                        <th class="sortable" data-column="ref_count">Reference Count<span class="sort-indicator" data-column="ref_count"></span></th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="symlinks-body">
+                                    <!-- Table content will be populated by JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for viewing symlink details -->
+    <div id="symlink-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Symlink Details</h2>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="detail-row">
+                    <span class="detail-label">Path:</span>
+                    <span id="modal-symlink" class="detail-value"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Target:</span>
+                    <span id="modal-target" class="detail-value"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Reference Count:</span>
+                    <span id="modal-ref-count" class="detail-value"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="layout.js"></script>
+    <script src="script.js"></script>
+</body>
+</html> 
