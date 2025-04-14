@@ -392,20 +392,224 @@ main {
 
 /* Responsive Design */
 @media (max-width: 768px) {
+    body {
+        font-size: 16px;
+        -webkit-text-size-adjust: 100%;
+    }
+
     .page-content {
         flex-direction: column;
+        padding: 0;
     }
 
     .sidebar {
         width: 100%;
+        height: auto;
+        position: relative;
+        padding: 0.75rem;
+        border-right: none;
+        border-bottom: 1px solid #e9ecef;
+    }
+
+    .sidebar-content {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.5rem;
+        padding: 0.5rem;
+    }
+
+    .sidebar-link {
+        padding: 0.75rem;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9rem;
+        border-radius: 6px;
+        background-color: #f8f9fa;
+    }
+
+    .sidebar-link.active {
+        background-color: #007bff;
+        color: white;
+    }
+
+    .brand {
+        padding: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .brand .logo-img {
+        max-width: 60px;
+    }
+
+    main {
+        margin-left: 0;
+        width: 100%;
+        padding: 0.75rem;
+    }
+
+    .main-content-boxes {
+        gap: 1rem;
+    }
+
+    .box {
+        padding: 0.75rem;
+        border-radius: 8px;
+    }
+
+    .box-section1 {
+        padding: 0.5rem;
+    }
+
+    .box-title h2 {
+        font-size: 1.1rem;
     }
 
     .stats-grid {
         grid-template-columns: 1fr;
+        gap: 0.75rem;
+        padding: 0.75rem;
     }
 
-    .search input {
+    .stat-card {
+        padding: 1rem;
+        min-height: 80px;
+    }
+
+    .stat-card i {
+        font-size: 1.5rem;
+    }
+
+    .stat-info h3 {
+        font-size: 0.9rem;
+    }
+
+    .stat-value {
+        font-size: 1.25rem;
+    }
+
+    .scan-results-grid {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+        padding: 0.75rem;
+    }
+
+    .scan-result-card {
+        padding: 1rem;
+        min-height: 80px;
+    }
+
+    .table-container {
+        padding: 0.5rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .table-container table {
+        min-width: 600px;
+    }
+
+    .table-container th,
+    .table-container td {
+        padding: 0.75rem;
+        font-size: 0.9rem;
+    }
+
+    .table-container .action-button {
+        padding: 0.5rem 1rem;
+        min-height: 44px;
+        font-size: 0.9rem;
+    }
+
+    .chart-container {
+        height: 250px;
+        padding: 0.5rem;
+    }
+
+    .actions-container {
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.75rem;
+    }
+
+    .button-group {
+        flex-direction: column;
         width: 100%;
+        gap: 0.75rem;
+    }
+
+    .primary-button {
+        width: 100%;
+        min-height: 44px;
+        padding: 0.75rem 1rem;
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .settings-form {
+        padding: 0.75rem;
+    }
+
+    .settings-group {
+        margin-bottom: 1rem;
+    }
+
+    .form-group {
+        margin-bottom: 1rem;
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="number"],
+    .form-group select {
+        min-height: 44px;
+        font-size: 1rem;
+    }
+
+    .settings-actions {
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.75rem;
+    }
+
+    .settings-actions .primary-button,
+    .settings-actions .secondary-button {
+        width: 100%;
+        min-height: 44px;
+        font-size: 1rem;
+    }
+
+    .directory-status-container {
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.75rem;
+    }
+
+    .directory-item {
+        padding: 0.75rem;
+        min-height: 44px;
+    }
+
+    .directory-path {
+        font-size: 0.9rem;
+    }
+
+    .modal-content {
+        width: 95%;
+        margin: 5% auto;
+    }
+
+    .modal-body {
+        padding: 0.75rem;
+    }
+
+    .detail-row {
+        margin-bottom: 0.75rem;
+    }
+
+    .detail-value {
+        padding: 0.5rem;
+        font-size: 0.9rem;
     }
 }
 
@@ -580,22 +784,6 @@ main {
     background-color: #007bff;
     color: white;
     border-color: #007bff;
-}
-
-@media (max-width: 768px) {
-    .table-container {
-        padding: 10px;
-    }
-
-    .table-container th,
-    .table-container td {
-        padding: 8px 10px;
-    }
-
-    .table-container .action-button {
-        padding: 4px 8px;
-        font-size: 12px;
-    }
 }
 
 /* Search container */

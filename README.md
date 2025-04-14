@@ -10,6 +10,21 @@ Alfred is a Docker container that monitors symlinks in a specified directory and
 - Persistent database to track symlinks and their targets
 - Docker container for easy deployment
 - Saltbox integration ready
+- Web-based management interface
+- Real-time dashboard with statistics
+- Historical metrics tracking
+- Directory status monitoring
+- Backup and restore functionality
+- Configurable scan intervals
+- Multiple directory support
+- Flexible delete behavior (files or folders)
+- Dry-run mode for testing
+- Search and filter capabilities
+- Pagination and sorting
+- Detailed symlink information
+- Automatic background scanning
+- Comprehensive logging
+- Multi-platform support (linux/amd64, linux/arm64, linux/arm/v7)
 
 ## How It Works
 
@@ -19,9 +34,10 @@ Alfred is a Docker container that monitors symlinks in a specified directory and
    - Deletes all files that are not currently symlinked 
 
 2. **Symlink Monitoring**:
-   - Watches a specified directory for symlink changes
+   - Watches specified directories for symlink changes
    - Tracks all symlinks and their target files in a SQLite database
    - Maintains a reference count for each target file
+   - Real-time updates through web interface
 
 3. **Event Handling**:
    - **Created**: When a new symlink is created, it's added to the database
@@ -33,6 +49,24 @@ Alfred is a Docker container that monitors symlinks in a specified directory and
    - When a symlink is deleted, Alfred checks the reference count
    - If the reference count reaches zero, the target file is deleted
    - This prevents orphaned files while preserving files still in use
+   - Configurable delete behavior (files or folders)
+
+5. **Web Interface**:
+   - Real-time dashboard with key metrics
+   - Historical trend analysis
+   - Directory status monitoring
+   - Search and filter capabilities
+   - Pagination and sorting
+   - Detailed symlink information
+   - Backup and restore functionality
+   - Settings management
+
+6. **Background Processing**:
+   - Automatic scanning at configurable intervals
+   - Manual scan capability
+   - Dry-run mode for testing
+   - Comprehensive logging
+   - Multi-platform support
 
 ## Installation
 
@@ -62,16 +96,43 @@ The container can be configured using environment variables:
 
 - `SYMLINK_DIR`: Directory to monitor for symlinks (default: `/mnt/plex`)
 - `TORRENTS_DIR`: Directory containing target files (default: `/mnt/remote/realdebrid/__all__`)
+- `DELETE_BEHAVIOR`: Choose between 'files' or 'folders' for deletion (default: 'files')
+- `SCAN_INTERVAL`: Background scan interval in minutes (0 to disable, default: 720)
 
 You can set these in your `.env` file or directly in docker-compose.yml.
 
 ## Usage
 
 The container runs automatically once started. It will:
-1. Delete files from RD mount that are not referenced by symlinks (requires a mount point that allows deletes eg. zurg)
-2. Monitor the specified directory for symlink changes
-3. Track all symlinks and their targets
-4. Delete target files when their last symlink is removed
+1. Perform a healthcheck on the directories
+2. Delete files from RD mount that are not referenced by symlinks (requires a mount point that allows deletes eg. zurg)
+3. Monitor the specified directory for symlink changes
+4. Track all symlinks and their targets
+5. Delete target files when their last symlink is removed
+
+### Web Interface
+
+Access the web interface at `http://localhost:5000` to:
+- View real-time statistics and metrics
+- Monitor directory status
+- Search and manage symlinks
+- Configure settings
+- Create backups and restore from backups
+- Run manual scans
+
+### UI Previews
+
+#### Dashboard
+![Dashboard](@dashboard.png)
+The dashboard provides an overview of your symlink system, including real-time statistics, historical trends, and directory status.
+
+#### Symlinks Management
+![Symlinks](@symlinks.png)
+Manage your symlinks with search, filtering, and sorting capabilities. View detailed information about each symlink and its target.
+
+#### Settings
+![Settings](@settings.png)
+Configure your Alfred instance with multiple directory support, scan intervals, and delete behavior settings.
 
 ### Command Line Arguments
 
@@ -93,6 +154,8 @@ services:
     user: "1000:1000"
     environment:
       - TZ=Etc/UTC
+    ports:
+      - 5000:5000
     networks:
       - saltbox
     labels:
@@ -103,16 +166,10 @@ services:
       - ${TORRENTS_DIR}:${TORRENTS_DIR}
 ```
 
-## Logging
-
-Logs are written to both:
-- Console (with color formatting)
-- File (`symlink_manager.log`) with rotation (10MB) and retention (10 days)
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
