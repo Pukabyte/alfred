@@ -274,12 +274,22 @@ def get_symlinks():
 def get_symlink(symlink):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM symlinks WHERE symlink = ?', (symlink,))
-    result = cursor.fetchone()
-    conn.close()
-    if result:
+    try:
+        # Normalize the symlink path to ensure consistent comparison
+        normalized_symlink = os.path.normpath(symlink)
+        execute_with_retry(cursor, 'SELECT * FROM symlinks WHERE symlink = ?', (normalized_symlink,))
+        result = cursor.fetchone()
+        if not result:
+            return jsonify({'error': 'Symlink not found'}), 404
         return jsonify(dict(result))
-    return jsonify({'error': 'Symlink not found'}), 404
+    except sqlite3.OperationalError as e:
+        logger.error(f"Database error fetching symlink {symlink}: {str(e)}")
+        return jsonify({'error': 'Database error occurred'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error fetching symlink {symlink}: {str(e)}")
+        return jsonify({'error': 'An unexpected error occurred'}), 500
+    finally:
+        conn.close()
 
 @app.route('/api/symlinks/<path:symlink>', methods=['DELETE'])
 def delete_symlink(symlink):

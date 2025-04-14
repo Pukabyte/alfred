@@ -3,38 +3,55 @@ document.addEventListener('DOMContentLoaded', function() {
     const saveButton = document.getElementById('save-settings-btn');
     const saveStatus = document.getElementById('save-status');
     const statusMessage = saveStatus.querySelector('.status-message');
-    const dirsContainer = document.getElementById('symlink-dirs-container');
-    const addDirBtn = document.getElementById('add-symlink-dir');
+    const symlinkDirsContainer = document.getElementById('symlink-dirs-container');
+    const torrentDirsContainer = document.getElementById('torrent-dirs-container');
+    const addSymlinkDirBtn = document.getElementById('add-symlink-dir');
+    const addTorrentDirBtn = document.getElementById('add-torrent-dir');
 
     // Load current settings
     fetch('/api/settings')
         .then(response => response.json())
         .then(settings => {
             // Clear existing directory inputs
-            dirsContainer.innerHTML = '';
+            symlinkDirsContainer.innerHTML = '';
+            torrentDirsContainer.innerHTML = '';
             
             // Add directory inputs for each symlink directory
             const symlinkDirs = settings.SYMLINK_DIR ? settings.SYMLINK_DIR.split(',') : [];
             symlinkDirs.forEach(dir => {
                 if (dir.trim()) {
-                    dirsContainer.appendChild(createDirectoryInput(dir.trim()));
+                    symlinkDirsContainer.appendChild(createDirectoryInput(dir.trim()));
                 }
             });
 
-            // If no directories are loaded, add one empty input
+            // Add directory inputs for each torrent directory
+            const torrentDirs = settings.TORRENTS_DIR ? settings.TORRENTS_DIR.split(',') : [];
+            torrentDirs.forEach(dir => {
+                if (dir.trim()) {
+                    torrentDirsContainer.appendChild(createDirectoryInput(dir.trim()));
+                }
+            });
+
+            // If no directories are loaded, add one empty input for each
             if (symlinkDirs.length === 0) {
-                dirsContainer.appendChild(createDirectoryInput());
+                symlinkDirsContainer.appendChild(createDirectoryInput());
+            }
+            if (torrentDirs.length === 0) {
+                torrentDirsContainer.appendChild(createDirectoryInput());
             }
 
-            document.getElementById('torrent-dirs').value = settings.TORRENTS_DIR || '';
             document.getElementById('delete-behavior').value = settings.DELETE_BEHAVIOR || 'files';
             document.getElementById('scan-interval').value = settings.SCAN_INTERVAL || '720';
         })
         .catch(error => showStatus('error', 'Failed to load settings'));
 
-    // Add new directory input when button is clicked
-    addDirBtn.addEventListener('click', () => {
-        dirsContainer.appendChild(createDirectoryInput());
+    // Add new directory input when buttons are clicked
+    addSymlinkDirBtn.addEventListener('click', () => {
+        symlinkDirsContainer.appendChild(createDirectoryInput());
+    });
+
+    addTorrentDirBtn.addEventListener('click', () => {
+        torrentDirsContainer.appendChild(createDirectoryInput());
     });
 
     form.addEventListener('submit', async function(e) {
@@ -44,15 +61,22 @@ document.addEventListener('DOMContentLoaded', function() {
         saveButton.classList.add('loading');
         
         // Collect all symlink directories
-        const symlinkInputs = dirsContainer.querySelectorAll('input[type="text"]');
+        const symlinkInputs = symlinkDirsContainer.querySelectorAll('input[type="text"]');
         const symlinkDirs = Array.from(symlinkInputs)
+            .map(input => input.value.trim())
+            .filter(Boolean)
+            .join(',');
+
+        // Collect all torrent directories
+        const torrentInputs = torrentDirsContainer.querySelectorAll('input[type="text"]');
+        const torrentDirs = Array.from(torrentInputs)
             .map(input => input.value.trim())
             .filter(Boolean)
             .join(',');
 
         const formData = {
             SYMLINK_DIR: symlinkDirs,
-            TORRENTS_DIR: document.getElementById('torrent-dirs').value,
+            TORRENTS_DIR: torrentDirs,
             DELETE_BEHAVIOR: document.getElementById('delete-behavior').value,
             SCAN_INTERVAL: document.getElementById('scan-interval').value
         };
@@ -89,23 +113,22 @@ document.addEventListener('DOMContentLoaded', function() {
             showStatus('error', 'Failed to save settings');
             console.error('Error:', error);
         } finally {
-            // Remove loading state
             saveButton.classList.remove('loading');
         }
     });
 
     function showStatus(type, message) {
-        // Remove previous classes
-        saveStatus.classList.remove('success', 'error', 'warning', 'visible', 'animate');
+        const icon = saveStatus.querySelector('.status-icon');
+        const messageSpan = saveStatus.querySelector('.status-message');
         
-        // Add new classes
-        saveStatus.classList.add(type, 'visible', 'animate');
-        statusMessage.textContent = message;
+        saveStatus.className = 'save-status ' + type;
+        icon.className = 'status-icon fa-solid ' + (type === 'success' ? 'fa-check' : type === 'error' ? 'fa-times' : 'fa-exclamation-triangle');
+        messageSpan.textContent = message;
         
-        // Remove animation class after it completes
+        // Hide status after 5 seconds
         setTimeout(() => {
-            saveStatus.classList.remove('animate', 'visible');
-        }, 3000);
+            saveStatus.className = 'save-status';
+        }, 5000);
     }
 });
 

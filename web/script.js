@@ -175,13 +175,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         paginatedData.forEach(item => {
             const row = document.createElement('tr');
+            const escapedSymlink = item.symlink.replace(/'/g, "\\'");
             row.innerHTML = `
                 <td>${item.symlink}</td>
                 <td>${item.target}</td>
                 <td>${item.ref_count}</td>
                 <td>
-                    <button class="action-button view-button" onclick="viewSymlink('${item.symlink}')">View</button>
-                    <button class="action-button delete-button" onclick="deleteSymlink('${item.symlink}')">Delete</button>
+                    <button class="action-button view-button" onclick="viewSymlink('${escapedSymlink}')">View</button>
+                    <button class="action-button delete-button" onclick="deleteSymlink('${escapedSymlink}')">Delete</button>
                 </td>
             `;
             fragment.appendChild(row);
@@ -232,8 +233,38 @@ document.addEventListener('DOMContentLoaded', () => {
     // View symlink details
     window.viewSymlink = async (symlink) => {
         try {
-            const response = await fetch(`${window.location.origin}/api/symlinks/${encodeURIComponent(symlink)}`);
+            // Ensure symlink is a string and trim any whitespace
+            symlink = String(symlink).trim();
+            
+            // Always use HTTPS
+            const url = `https://${window.location.host}/api/symlinks/${encodeURIComponent(symlink)}`;
+            
+            console.log('Fetching URL:', url); // Debug log
+            
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (response.status === 404) {
+                alert('Symlink not found');
+                return;
+            }
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+            }
+            
             const data = await response.json();
+            
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
             
             modalSymlink.textContent = data.symlink;
             modalTarget.textContent = data.target;
@@ -242,6 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showModal();
         } catch (error) {
             console.error('Error viewing symlink:', error);
+            alert(`Error viewing symlink details: ${error.message}`);
         }
     };
 

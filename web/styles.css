@@ -1516,4 +1516,34 @@ main {
 
 #add-symlink-dir i {
     font-size: 0.875rem;
+}
+
+#add-torrent-dir {
+    margin-top: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    height: 36px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#add-torrent-dir:hover {
+    background-color: #218838;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+#add-torrent-dir:active {
+    transform: translateY(0);
+}
+
+#add-torrent-dir i {
+    font-size: 0.875rem;
 } 
