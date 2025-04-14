@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alfred - Settings</title>
+    <link rel="icon" type="image/png" href="/assets/logo-dark.png">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="page-content">
+        <div class="sidebar">
+            <button id="sidebar-toggle" class="sidebar-toggle">
+                <i class="fas fa-bars"></i>
+            </button>
+            <div class="sidebar-content">
+                <div class="brand">
+                    <img src="/assets/logo.png" alt="Alfred Logo" class="logo-img">
+                </div>
+                <ul>
+                    <li>
+                        <a href="/dashboard" class="sidebar-link">
+                            <i class="fa-regular fa-chart-bar fa-fw"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/symlinks" class="sidebar-link">
+                            <i class="fa-solid fa-link fa-fw"></i>
+                            <span>Symlinks</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/settings" class="sidebar-link active">
+                            <i class="fa-solid fa-gear fa-fw"></i>
+                            <span>Settings</span>
+                        </a>
+                    </li>
+                </ul>
+                <div class="directory-status-sidebar">
+                    <h3>Directory Status</h3>
+                    <div class="directory-section">
+                        <h4>Symlink Directories</h4>
+                        <div id="symlink-directories" class="directory-list">
+                            <!-- Will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    <div class="directory-section">
+                        <h4>Torrent Directories</h4>
+                        <div id="torrent-directories" class="directory-list">
+                            <!-- Will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <main>
+            <div class="main-content">
+                <div class="title">
+                    <h1>Settings</h1>
+                </div>
+                <div class="main-content-boxes">
+                    <div class="box settings-box">
+                        <div class="box-section1">
+                            <div class="box-title">
+                                <h2>Configuration Settings</h2>
+                                <p>Manage your Alfred configuration</p>
+                            </div>
+                        </div>
+                        <form id="settings-form" class="settings-form">
+                            <div class="settings-group">
+                                <h3>Directory Settings</h3>
+                                <div class="form-group">
+                                    <label>Symlink Directories</label>
+                                    <div class="input-help">Add directories to monitor for symlinks</div>
+                                    <div id="symlink-dirs-container">
+                                        <!-- Directory inputs will be added here dynamically -->
+                                    </div>
+                                    <button type="button" class="secondary-button" id="add-symlink-dir">
+                                        <i class="fa-solid fa-plus"></i>
+                                        Add Directory
+                                    </button>
+                                </div>
+                                <div class="form-group">
+                                    <label for="torrent-dirs">Torrent Directories</label>
+                                    <div class="input-help">Comma-separated list of directories containing target files</div>
+                                    <input type="text" id="torrent-dirs" name="TORRENTS_DIR" placeholder="/mnt/remote/zurgtrue/__all__">
+                                </div>
+                            </div>
+                            <div class="settings-group">
+                                <h3>Behavior Settings</h3>
+                                <div class="form-group">
+                                    <label for="delete-behavior">Delete Behavior</label>
+                                    <div class="input-help">Choose whether to delete individual files or their parent folders</div>
+                                    <select id="delete-behavior" name="DELETE_BEHAVIOR">
+                                        <option value="files">Delete Files</option>
+                                        <option value="folders">Delete Folders</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="scan-interval">Scan Interval (minutes)</label>
+                                    <div class="input-help">Background scan interval in minutes (0 to disable)</div>
+                                    <input type="number" id="scan-interval" name="SCAN_INTERVAL" min="0" placeholder="60">
+                                </div>
+                            </div>
+                            <div class="settings-actions">
+                                <button type="submit" class="primary-button" id="save-settings-btn">
+                                    <i class="fa-solid fa-save"></i>
+                                    <span class="button-text">Save Settings</span>
+                                    <div class="button-spinner" style="display: none;">
+                                        <i class="fa-solid fa-spinner fa-spin"></i>
+                                    </div>
+                                </button>
+                                <div id="save-status" class="save-status">
+                                    <i class="status-icon"></i>
+                                    <span class="status-message"></span>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="layout.js"></script>
+    <script src="settings.js"></script>
+</body>
+</html> 

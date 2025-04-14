@@ -52,6 +52,22 @@ function createDirectoryItem(dir) {
     return item;
 }
 
+// Function to save sidebar state
+function saveSidebarState(isCollapsed) {
+    localStorage.setItem('sidebarCollapsed', isCollapsed);
+}
+
+// Function to load sidebar state
+function loadSidebarState() {
+    const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+    const sidebar = document.querySelector('.sidebar');
+    if (isCollapsed) {
+        sidebar.classList.add('collapsed');
+    } else {
+        sidebar.classList.remove('collapsed');
+    }
+}
+
 // Update active link in sidebar based on current page
 function updateActiveSidebarLink() {
     const currentPath = window.location.pathname;
@@ -68,6 +84,19 @@ function updateActiveSidebarLink() {
 document.addEventListener('DOMContentLoaded', () => {
     updateDirectoryStatus();
     updateActiveSidebarLink();
+    
+    // Add sidebar toggle functionality
+    const sidebar = document.querySelector('.sidebar');
+    const toggleButton = document.getElementById('sidebar-toggle');
+    
+    // Load saved state
+    loadSidebarState();
+    
+    toggleButton.addEventListener('click', () => {
+        sidebar.classList.toggle('collapsed');
+        // Save new state
+        saveSidebarState(sidebar.classList.contains('collapsed'));
+    });
     
     // Refresh directory status every 30 seconds
     setInterval(updateDirectoryStatus, 30000);

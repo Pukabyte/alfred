@@ -42,10 +42,31 @@ logger.add(
     colorize=True,
 )
 
-# Create table if it doesn't exist
+def get_db_connection():
+    conn = sqlite3.connect(db_file, timeout=30)  # 30 second timeout
+    # Enable WAL mode for better concurrency
+    conn.execute('PRAGMA journal_mode=WAL')
+    conn.execute('PRAGMA synchronous=NORMAL')
+    conn.execute('PRAGMA busy_timeout=30000')  # 30 second busy timeout
+    return conn
+
+def execute_with_retry(cursor, query, params=None, max_retries=3):
+    """Execute a query with retry logic for database locks"""
+    for attempt in range(max_retries):
+        try:
+            if params:
+                return cursor.execute(query, params)
+            else:
+                return cursor.execute(query)
+        except sqlite3.OperationalError as e:
+            if 'database is locked' in str(e) and attempt < max_retries - 1:
+                time.sleep(1)  # Wait 1 second before retrying
+                continue
+            raise
+
 def create_table(conn):
     cursor = conn.cursor()
-    cursor.execute('''
+    execute_with_retry(cursor, '''
     CREATE TABLE IF NOT EXISTS symlinks (
         id INTEGER PRIMARY KEY,
         symlink TEXT UNIQUE,
@@ -53,14 +74,14 @@ def create_table(conn):
         ref_count INTEGER DEFAULT 1
     )
     ''')
-    cursor.execute('''
+    execute_with_retry(cursor, '''
     CREATE TABLE IF NOT EXISTS scan_times (
         id INTEGER PRIMARY KEY,
         last_scan_time INTEGER,
         scan_interval INTEGER
     )
     ''')
-    cursor.execute('''
+    execute_with_retry(cursor, '''
     CREATE TABLE IF NOT EXISTS deletions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         symlink TEXT NOT NULL,
@@ -69,7 +90,7 @@ def create_table(conn):
         reason TEXT
     )
     ''')
-    cursor.execute('''
+    execute_with_retry(cursor, '''
     CREATE TABLE IF NOT EXISTS metrics_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -78,9 +99,17 @@ def create_table(conn):
         total_deletions INTEGER
     )
     ''')
+    execute_with_retry(cursor, '''
+    CREATE TABLE IF NOT EXISTS scan_statistics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scan_time INTEGER NOT NULL,
+        files_checked INTEGER DEFAULT 0,
+        files_deleted INTEGER DEFAULT 0,
+        folders_deleted INTEGER DEFAULT 0
+    )
+    ''')
     conn.commit()
 
-# Function to upsert symlinks with reference counting
 def upsert_symlink(file_path, conn=None):
     if os.path.islink(file_path):
         target = os.readlink(file_path)
@@ -90,22 +119,22 @@ def upsert_symlink(file_path, conn=None):
         try:
             should_close = False
             if conn is None:
-                conn = sqlite3.connect(db_file)
+                conn = get_db_connection()
                 should_close = True
             
             cursor = conn.cursor()
             # Check if the symlink already exists
-            cursor.execute('SELECT target FROM symlinks WHERE symlink = ?', (file_path,))
+            execute_with_retry(cursor, 'SELECT target FROM symlinks WHERE symlink = ?', (file_path,))
             symlink_row = cursor.fetchone()
             if symlink_row:
                 # If the symlink exists but points to a different target, we need to handle that
                 old_target = symlink_row[0]
                 if old_target != target:
                     # Decrement ref_count for old target
-                    cursor.execute('SELECT ref_count FROM symlinks WHERE target = ?', (old_target,))
+                    execute_with_retry(cursor, 'SELECT ref_count FROM symlinks WHERE target = ?', (old_target,))
                     old_ref_count = cursor.fetchone()[0]
                     if old_ref_count > 1:
-                        cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (old_ref_count - 1, old_target))
+                        execute_with_retry(cursor, 'UPDATE symlinks SET ref_count = ? WHERE target = ?', (old_ref_count - 1, old_target))
                     else:
                         # If this was the last reference to the old target, delete it
                         if os.path.exists(old_target):
@@ -118,24 +147,24 @@ def upsert_symlink(file_path, conn=None):
                                     import shutil
                                     shutil.rmtree(parent_dir)
                                     logger.info(f"❌ Deleted old target folder: {parent_dir}")
-                        cursor.execute('DELETE FROM symlinks WHERE target = ?', (old_target,))
+                        execute_with_retry(cursor, 'DELETE FROM symlinks WHERE target = ?', (old_target,))
                     
                     # Update the symlink to point to the new target
-                    cursor.execute('UPDATE symlinks SET target = ? WHERE symlink = ?', (target, file_path))
+                    execute_with_retry(cursor, 'UPDATE symlinks SET target = ? WHERE symlink = ?', (target, file_path))
                 else:
                     logger.info(f"🔗 Symlink {file_path} already exists in the database with the same target.")
             else:
                 # Check if the target exists
-                cursor.execute('SELECT ref_count FROM symlinks WHERE target = ?', (target,))
+                execute_with_retry(cursor, 'SELECT ref_count FROM symlinks WHERE target = ?', (target,))
                 target_row = cursor.fetchone()
                 if target_row:
                     ref_count = target_row[0] + 1
-                    cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
-                    cursor.execute('INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', (file_path, target, ref_count))
+                    execute_with_retry(cursor, 'UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
+                    execute_with_retry(cursor, 'INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', (file_path, target, ref_count))
                     logger.info(f"🔄 Incremented ref_count for target {target}, new ref_count is {ref_count}")
                 else:
                     ref_count = 1
-                    cursor.execute('INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', (file_path, target, ref_count))
+                    execute_with_retry(cursor, 'INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', (file_path, target, ref_count))
                     logger.info(f"🆕 Created new target entry with ref_count {ref_count}")
             
             if should_close:
@@ -149,14 +178,13 @@ def upsert_symlink(file_path, conn=None):
             if should_close:
                 conn.close()
 
-# Updated function to find and delete non-linked files
 def find_non_linked_files(torrents_directories, symlink_directories, dry_run=False, no_confirm=False, exclude_patterns=[]):
     dst_links = set()
     # First, scan all symlinks and add them to the database
     logger.info("🔍 Scanning for existing symlinks...")
     
     # Open a single database connection for batch operations
-    with sqlite3.connect(db_file) as conn:
+    with get_db_connection() as conn:
         # Enable WAL mode for better performance
         conn.execute('PRAGMA journal_mode=WAL')
         conn.execute('PRAGMA synchronous=NORMAL')
@@ -213,80 +241,91 @@ def find_non_linked_files(torrents_directories, symlink_directories, dry_run=Fal
 
     total_files = len(all_files)
     deleted_files = 0
+    deleted_folders = 0
 
-    for file_path in unused_files:
-        if not os.path.exists(file_path):
-            continue  # Skip if the file doesn't exist
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        current_time = int(time.time())
 
-        if os.path.isfile(file_path):
-            logger.info(f"File {file_path} is not used!")
+        for file_path in unused_files:
+            if not os.path.exists(file_path):
+                continue  # Skip if the file doesn't exist
 
-            if dry_run:
-                if delete_behavior == 'files':
-                    logger.info(f"🟠 Dry-run: Would delete file: {file_path}")
-                else:
-                    parent_dir = os.path.dirname(file_path)
-                    logger.info(f"🟠 Dry-run: Would delete parent folder: {parent_dir}")
-            else:
-                if no_confirm:
-                    response = 'y'
-                else:
+            if os.path.isfile(file_path):
+                logger.info(f"File {file_path} is not used!")
+
+                if dry_run:
                     if delete_behavior == 'files':
-                        response = input(f"Do you want to delete this file '{file_path}'? (y/n): ")
+                        logger.info(f"🟠 Dry-run: Would delete file: {file_path}")
                     else:
                         parent_dir = os.path.dirname(file_path)
-                        response = input(f"Do you want to delete the parent folder '{parent_dir}'? (y/n): ")
-                if response.lower() == 'y':
-                    try:
+                        logger.info(f"🟠 Dry-run: Would delete parent folder: {parent_dir}")
+                else:
+                    if no_confirm:
+                        response = 'y'
+                    else:
                         if delete_behavior == 'files':
-                            os.remove(file_path)
-                            logger.info(f"File {file_path} deleted!")
-                            # Record deletion
-                            cursor = conn.cursor()
-                            cursor.execute('''
-                                INSERT INTO deletions (symlink, target, timestamp, reason)
-                                VALUES (?, ?, ?, ?)
-                            ''', (file_path, file_path, int(time.time()), 'unused_file'))
+                            response = input(f"Do you want to delete this file '{file_path}'? (y/n): ")
                         else:
                             parent_dir = os.path.dirname(file_path)
-                            import shutil
-                            shutil.rmtree(parent_dir)
-                            logger.info(f"Parent folder {parent_dir} deleted!")
-                            # Record deletion
-                            cursor.execute('''
-                                INSERT INTO deletions (symlink, target, timestamp, reason)
-                                VALUES (?, ?, ?, ?)
-                            ''', (parent_dir, file_path, int(time.time()), 'unused_folder'))
-                        deleted_files += 1
-                    except Exception as e:
-                        logger.error(f"Error deleting {'file' if delete_behavior == 'files' else 'parent folder'}: {e}")
-                        logger.error(traceback.format_exc())
-                else:
-                    logger.info(f"{'File' if delete_behavior == 'files' else 'Parent folder'} not deleted!")
-        else:
-            # Skip directories or other non-file paths
-            continue
+                            response = input(f"Do you want to delete the parent folder '{parent_dir}'? (y/n): ")
+                    if response.lower() == 'y':
+                        try:
+                            if delete_behavior == 'files':
+                                os.remove(file_path)
+                                logger.info(f"File {file_path} deleted!")
+                                # Record deletion
+                                execute_with_retry(cursor, '''
+                                    INSERT INTO deletions (symlink, target, timestamp, reason)
+                                    VALUES (?, ?, ?, ?)
+                                ''', (file_path, file_path, current_time, 'unused_file'))
+                                deleted_files += 1
+                            else:
+                                parent_dir = os.path.dirname(file_path)
+                                import shutil
+                                shutil.rmtree(parent_dir)
+                                logger.info(f"Parent folder {parent_dir} deleted!")
+                                # Record deletion
+                                execute_with_retry(cursor, '''
+                                    INSERT INTO deletions (symlink, target, timestamp, reason)
+                                    VALUES (?, ?, ?, ?)
+                                ''', (parent_dir, file_path, current_time, 'unused_folder'))
+                                deleted_folders += 1
+                        except Exception as e:
+                            logger.error(f"Error deleting {'file' if delete_behavior == 'files' else 'parent folder'}: {e}")
+                            logger.error(traceback.format_exc())
+                    else:
+                        logger.info(f"{'File' if delete_behavior == 'files' else 'Parent folder'} not deleted!")
+            else:
+                # Skip directories or other non-file paths
+                continue
+
+        # Record scan statistics
+        execute_with_retry(cursor, '''
+            INSERT INTO scan_statistics (scan_time, files_checked, files_deleted, folders_deleted)
+            VALUES (?, ?, ?, ?)
+        ''', (current_time, total_files, deleted_files, deleted_folders))
+        conn.commit()
 
     logger.info(f"Total files checked: {total_files}")
-    logger.info(f"Total {'files' if delete_behavior == 'files' else 'parent folders'} deleted: {deleted_files}")
+    logger.info(f"Total {'files' if delete_behavior == 'files' else 'parent folders'} deleted: {deleted_files if delete_behavior == 'files' else deleted_folders}")
     
     # Record metrics after scan
-    with sqlite3.connect(db_file) as conn:
+    with get_db_connection() as conn:
         update_metrics_if_needed(conn)
 
-# Function to delete missing symlinks' targets
 def delete_missing_target(symlink, dry_run):
-    with sqlite3.connect(db_file) as conn:
+    with get_db_connection() as conn:
         cursor = conn.cursor()
         # First get the target and check remaining references
-        cursor.execute('SELECT target FROM symlinks WHERE symlink = ?', (symlink,))
+        execute_with_retry(cursor, 'SELECT target FROM symlinks WHERE symlink = ?', (symlink,))
         row = cursor.fetchone()
         if row:
             target = row[0]
             logger.info(f"🔍 Found target {target} for symlink {symlink}")
             
             # Check how many symlinks point to this target
-            cursor.execute('SELECT COUNT(*) FROM symlinks WHERE target = ?', (target,))
+            execute_with_retry(cursor, 'SELECT COUNT(*) FROM symlinks WHERE target = ?', (target,))
             total_refs = cursor.fetchone()[0]
             logger.info(f"🔍 Target {target} has {total_refs} references")
             
@@ -319,11 +358,11 @@ def delete_missing_target(symlink, dry_run):
                     logger.info(f"Target {target} does not exist. Skipping deletion.")
                 
                 # Remove all entries for this target from the database
-                cursor.execute('DELETE FROM symlinks WHERE target = ?', (target,))
+                execute_with_retry(cursor, 'DELETE FROM symlinks WHERE target = ?', (target,))
                 logger.info(f"❌ Removed all database entries for target: {target}")
             else:
                 # Just remove this symlink entry
-                cursor.execute('DELETE FROM symlinks WHERE symlink = ?', (symlink,))
+                execute_with_retry(cursor, 'DELETE FROM symlinks WHERE symlink = ?', (symlink,))
                 logger.info(f"🔄 Target {target} still has {total_refs - 1} references")
             
             conn.commit()
@@ -369,7 +408,7 @@ class SymlinkEventHandler(FileSystemEventHandler):
             logger.debug(f"📝 Detected creation event: {event.src_path}")
             if os.path.islink(event.src_path):
                 logger.info(f"🔗 New symlink created: {event.src_path}")
-                with sqlite3.connect(db_file) as conn:
+                with get_db_connection() as conn:
                     upsert_symlink(event.src_path, conn)
                     update_metrics_if_needed(conn)
         except Exception as e:
@@ -389,9 +428,9 @@ class SymlinkEventHandler(FileSystemEventHandler):
     def on_deleted(self, event):
         try:
             logger.debug(f"📝 Detected deletion event: {event.src_path}")
-            with sqlite3.connect(db_file) as conn:
+            with get_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute('SELECT target, ref_count FROM symlinks WHERE symlink = ?', (event.src_path,))
+                execute_with_retry(cursor, 'SELECT target, ref_count FROM symlinks WHERE symlink = ?', (event.src_path,))
                 row = cursor.fetchone()
                 if row:
                     target, ref_count = row
@@ -418,19 +457,19 @@ class SymlinkEventHandler(FileSystemEventHandler):
                                 except Exception as e:
                                     logger.error(f"Error deleting target {target}: {e}")
                                     logger.error(traceback.format_exc())
-                        cursor.execute('DELETE FROM symlinks WHERE target = ?', (target,))
+                        execute_with_retry(cursor, 'DELETE FROM symlinks WHERE target = ?', (target,))
                         # Record deletion with reason
-                        cursor.execute('''
+                        execute_with_retry(cursor, '''
                             INSERT INTO deletions (symlink, target, timestamp, reason)
                             VALUES (?, ?, ?, ?)
                         ''', (event.src_path, target, int(time.time()), 'last_reference_deleted'))
                         logger.info(f"❌ Removed symlink entry from database: {event.src_path} (was pointing to {target})")
                     else:
                         # Update ref_count and remove symlink entry
-                        cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
-                        cursor.execute('DELETE FROM symlinks WHERE symlink = ?', (event.src_path,))
+                        execute_with_retry(cursor, 'UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
+                        execute_with_retry(cursor, 'DELETE FROM symlinks WHERE symlink = ?', (event.src_path,))
                         # Record deletion with reason
-                        cursor.execute('''
+                        execute_with_retry(cursor, '''
                             INSERT INTO deletions (symlink, target, timestamp, reason)
                             VALUES (?, ?, ?, ?)
                         ''', (event.src_path, target, int(time.time()), 'symlink_deleted'))
@@ -453,18 +492,18 @@ class SymlinkEventHandler(FileSystemEventHandler):
                 # Get the target before updating the database
                 target = os.readlink(event.dest_path)
                 # Update the database with the new location
-                with sqlite3.connect(db_file) as conn:
+                with get_db_connection() as conn:
                     cursor = conn.cursor()
                     # Check if the target exists in the database
-                    cursor.execute('SELECT ref_count FROM symlinks WHERE target = ?', (target,))
+                    execute_with_retry(cursor, 'SELECT ref_count FROM symlinks WHERE target = ?', (target,))
                     target_row = cursor.fetchone()
                     if target_row:
                         # Increment ref_count since we're adding a new symlink
                         ref_count = target_row[0] + 1
-                        cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
+                        execute_with_retry(cursor, 'UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
                         # Add the new symlink
-                        cursor.execute('INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', 
-                                     (event.dest_path, target, ref_count))
+                        execute_with_retry(cursor, 'INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', 
+                                         (event.dest_path, target, ref_count))
                         logger.info(f"🔄 Updated ref_count for target {target}, new ref_count is {ref_count}")
                     else:
                         # If target doesn't exist, add it as a new entry
@@ -476,10 +515,10 @@ class SymlinkEventHandler(FileSystemEventHandler):
                 logger.info(f"🔗 Cleaning up old symlink: {event.src_path}")
                 # Get the target before deleting
                 target = os.readlink(event.src_path)
-                with sqlite3.connect(db_file) as conn:
+                with get_db_connection() as conn:
                     cursor = conn.cursor()
                     # Decrement ref_count
-                    cursor.execute('SELECT ref_count FROM symlinks WHERE target = ?', (target,))
+                    execute_with_retry(cursor, 'SELECT ref_count FROM symlinks WHERE target = ?', (target,))
                     target_row = cursor.fetchone()
                     if target_row:
                         ref_count = target_row[0] - 1
@@ -499,16 +538,15 @@ class SymlinkEventHandler(FileSystemEventHandler):
                                                     if os.path.isfile(file_path):
                                                         os.remove(file_path)
                                                         logger.info(f"❌ Deleted file: {file_path}")
-                            cursor.execute('DELETE FROM symlinks WHERE target = ?', (target,))
+                            execute_with_retry(cursor, 'DELETE FROM symlinks WHERE target = ?', (target,))
                             logger.info(f"❌ Removed symlink entry from database: {event.src_path} (was pointing to {target})")
                         else:
                             # Update ref_count and remove symlink entry
-                            cursor.execute('UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
-                            cursor.execute('DELETE FROM symlinks WHERE symlink = ?', (event.src_path,))
+                            execute_with_retry(cursor, 'UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
+                            execute_with_retry(cursor, 'DELETE FROM symlinks WHERE symlink = ?', (event.src_path,))
                             logger.info(f"🔄 Decremented ref_count for target {target}, new ref_count is {ref_count}")
                     conn.commit()
             
-            conn.commit()
             update_metrics_if_needed(conn)
         except Exception as e:
             logger.error(f"Error handling movement from {event.src_path} to {event.dest_path}: {e}")
@@ -567,7 +605,7 @@ def background_scan(dry_run, no_confirm, exclude_patterns):
     """Run find_non_linked_files in the background at specified intervals."""
     while True:
         try:
-            with sqlite3.connect(db_file) as conn:
+            with get_db_connection() as conn:
                 if should_perform_scan(conn, scan_interval):
                     logger.info("🔄 Starting background scan...")
                     find_non_linked_files(
@@ -589,20 +627,20 @@ def record_metrics(conn=None):
     """Record current metrics to the history table"""
     should_close = False
     if conn is None:
-        conn = sqlite3.connect(db_file)
+        conn = get_db_connection()
         should_close = True
     try:
         cursor = conn.cursor()
         # Get current stats
-        cursor.execute('SELECT COUNT(*) as total, COUNT(DISTINCT target) as unique_targets FROM symlinks')
+        execute_with_retry(cursor, 'SELECT COUNT(*) as total, COUNT(DISTINCT target) as unique_targets FROM symlinks')
         total, unique = cursor.fetchone()
         
         # Get total deletions
-        cursor.execute('SELECT COUNT(*) FROM deletions')
+        execute_with_retry(cursor, 'SELECT COUNT(*) FROM deletions')
         deletions = cursor.fetchone()[0]
         
         # Record metrics
-        cursor.execute('''
+        execute_with_retry(cursor, '''
         INSERT INTO metrics_history (total_symlinks, unique_targets, total_deletions)
         VALUES (?, ?, ?)
         ''', (total, unique, deletions))
@@ -619,6 +657,78 @@ def update_metrics_if_needed(conn):
     except Exception as e:
         logger.error(f"Error recording metrics: {e}")
         logger.debug(traceback.format_exc())
+
+def reload_env_settings():
+    """Reload environment variables and reinitialize components."""
+    global symlink_directories, torrents_directories, delete_behavior, scan_interval
+
+    try:
+        # Read and parse the .env file
+        env_file = '/app/data/.env'
+        if not os.path.exists(env_file):
+            raise FileNotFoundError(f"Environment file not found: {env_file}")
+
+        with open(env_file, 'r') as f:
+            env_lines = f.readlines()
+
+        # Parse environment variables
+        env_vars = {}
+        for line in env_lines:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                key, value = line.split('=', 1)
+                env_vars[key.strip()] = value.strip()
+
+        # Update environment variables
+        for key, value in env_vars.items():
+            os.environ[key] = value
+
+        # Reload global variables
+        symlink_directories = os.getenv('SYMLINK_DIR', '').split(',')
+        torrents_directories = os.getenv('TORRENTS_DIR', '').split(',')
+        delete_behavior = os.getenv('DELETE_BEHAVIOR', 'files').lower()
+        scan_interval = int(os.getenv('SCAN_INTERVAL', '720'))
+
+        # Clean up and validate directories
+        symlink_directories = [path.strip() for path in symlink_directories if path.strip()]
+        torrents_directories = [path.strip() for path in torrents_directories if path.strip()]
+
+        # Validate settings
+        if not symlink_directories or not torrents_directories:
+            raise ValueError("Required environment variables SYMLINK_DIR and TORRENTS_DIR must be set")
+
+        if delete_behavior not in ['files', 'folders']:
+            raise ValueError("DELETE_BEHAVIOR must be either 'files' or 'folders'")
+
+        if scan_interval < 0:
+            raise ValueError("SCAN_INTERVAL must be a positive number or 0")
+
+        # Update scan times table with new interval
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            # Get the last scan time
+            cursor.execute('SELECT last_scan_time FROM scan_times ORDER BY id DESC LIMIT 1')
+            row = cursor.fetchone()
+            if row:
+                last_scan_time = row[0]
+                # Insert new record with updated interval
+                cursor.execute('INSERT INTO scan_times (last_scan_time, scan_interval) VALUES (?, ?)',
+                             (last_scan_time, scan_interval))
+                conn.commit()
+
+        # Log the reloaded settings
+        logger.info("🔄 Settings reloaded successfully")
+        logger.info(f"📁 Symlink directories: {', '.join(symlink_directories)}")
+        logger.info(f"📁 Torrent directories: {', '.join(torrents_directories)}")
+        logger.info(f"🗑️ Delete behavior: {delete_behavior}")
+        logger.info(f"⏱️ Scan interval: {scan_interval} minutes")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Error reloading settings: {e}")
+        logger.debug(traceback.format_exc())
+        raise
 
 def main(dry_run, no_confirm, exclude_patterns):
     # Validate paths and permissions
@@ -643,7 +753,7 @@ def main(dry_run, no_confirm, exclude_patterns):
         sys.exit(1)
 
     logger.info("🔄 Initializing database...")
-    with sqlite3.connect(db_file) as conn:
+    with get_db_connection() as conn:
         create_table(conn)
         record_metrics(conn)  # Record initial metrics
         
@@ -670,7 +780,7 @@ def main(dry_run, no_confirm, exclude_patterns):
 
     logger.info("")
     logger.info("🔍 Setting up real-time monitoring...")
-    logger.info(f"📁 Monitoring symlink directories: {', '.join(symlink_directories)}")
+    logger.info(f"🔍 Monitoring symlink directories: {', '.join(symlink_directories)}")
     logger.info(f"📁 Monitoring torrent directories: {', '.join(torrents_directories)}")
     logger.info("")
 

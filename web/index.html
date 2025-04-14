@@ -3,42 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Symlinks</title>
+    <title>Alfred - Symlinks</title>
+    <link rel="icon" type="image/png" href="/assets/logo-dark.png">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
     <div class="page-content">
         <div class="sidebar">
-            <div class="brand">
-                <h3 class="brand-name">Alfred</h3>
-            </div>
-            <ul>
-                <li>
-                    <a href="/dashboard" class="sidebar-link">
-                        <i class="fa-regular fa-chart-bar fa-fw"></i>
-                        <span>Dashboard</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="/symlinks" class="sidebar-link active">
-                        <i class="fa-solid fa-link fa-fw"></i>
-                        <span>Symlinks</span>
-                    </a>
-                </li>
-            </ul>
-            <div class="directory-status-sidebar">
-                <h3>Directory Status</h3>
-                <div class="directory-section">
-                    <h4>Symlink Directories</h4>
-                    <div id="symlink-directories" class="directory-list">
-                        <!-- Will be populated by JavaScript -->
-                    </div>
+            <button id="sidebar-toggle" class="sidebar-toggle">
+                <i class="fas fa-bars"></i>
+            </button>
+            <div class="sidebar-content">
+                <div class="brand">
+                    <img src="/assets/logo.png" alt="Alfred Logo" class="logo-img">
                 </div>
-                <div class="directory-section">
-                    <h4>Torrent Directories</h4>
-                    <div id="torrent-directories" class="directory-list">
-                        <!-- Will be populated by JavaScript -->
+                <ul>
+                    <li>
+                        <a href="/dashboard" class="sidebar-link">
+                            <i class="fa-regular fa-chart-bar fa-fw"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/symlinks" class="sidebar-link active">
+                            <i class="fa-solid fa-link fa-fw"></i>
+                            <span>Symlinks</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/settings" class="sidebar-link">
+                            <i class="fa-solid fa-gear fa-fw"></i>
+                            <span>Settings</span>
+                        </a>
+                    </li>
+                </ul>
+                <div class="directory-status-sidebar">
+                    <h3>Directory Status</h3>
+                    <div class="directory-section">
+                        <h4>Symlink Directories</h4>
+                        <div id="symlink-directories" class="directory-list">
+                            <!-- Will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    <div class="directory-section">
+                        <h4>Torrent Directories</h4>
+                        <div id="torrent-directories" class="directory-list">
+                            <!-- Will be populated by JavaScript -->
+                        </div>
                     </div>
                 </div>
             </div>
