@@ -123,15 +123,15 @@ Access the web interface at `http://localhost:5000` to:
 ### UI Previews
 
 #### Dashboard
-![Dashboard](@dashboard.png)
+![Dashboard](/.github/screenshots/dashboard.png)
 The dashboard provides an overview of your symlink system, including real-time statistics, historical trends, and directory status.
 
 #### Symlinks Management
-![Symlinks](@symlinks.png)
+![Symlinks](/.github/screenshots/symlinks.png)
 Manage your symlinks with search, filtering, and sorting capabilities. View detailed information about each symlink and its target.
 
 #### Settings
-![Settings](@settings.png)
+![Settings](/.github/screenshots/settings.png)
 Configure your Alfred instance with multiple directory support, scan intervals, and delete behavior settings.
 
 ### Command Line Arguments
