@@ -2,7 +2,7 @@
   <a href="https://github.com/Pukabyte/alfred">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="static/img/logo.png" width="400">
-      <img alt="alfred" src="/web/assets/logo-dark.png" width="400">
+      <img alt="alfred" src="web/assets/logo-dark.png" width="400">
     </picture>
   </a>
 </div>
