@@ -1,3 +1,24 @@
+<div align="center">
+  <a href="https://github.com/Pukabyte/alfred">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="static/img/logo.png" width="400">
+      <img alt="alfred" src="/web/assets/logo-dark.png" width="400">
+    </picture>
+  </a>
+</div>
+
+<div align="center">
+  <a href="https://github.com/Pukabyte/alfred/stargazers"><img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Pukabyte/alfred?label=Alfred"></a>
+  <a href="https://github.com/Pukabyte/alfred/issues"><img alt="Issues" src="https://img.shields.io/github/issues/Pukabyte/alfred" /></a>
+  <a href="https://github.com/Pukabyte/alfred/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/Pukabyte/alfred"></a>
+  <a href="https://github.com/Pukabyte/alfred/graphs/contributors"><img alt="Contributors" src="https://img.shields.io/github/contributors/Pukabyte/alfred" /></a>
+  <a href="https://discord.gg/vMSnNcd7m5"><img alt="Discord" src="https://img.shields.io/badge/Join%20discord-8A2BE2" /></a>
+</div>
+
+<div align="center">
+  <p>Symlink management made simple.</p>
+</div>
+
 # Alfred - Symlink Manager
 
 Alfred is a Docker container that monitors symlinks in a specified directory and manages their target files. When a symlink is deleted, Alfred will automatically delete the target file if it's no longer referenced by any other symlinks.
