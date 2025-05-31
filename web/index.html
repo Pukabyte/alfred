@@ -151,6 +151,35 @@
         </div>
     </div>
     <script src="layout.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const darkModeToggle = document.getElementById('dark-mode-toggle');
+        const darkModeToggleText = document.getElementById('dark-mode-toggle-text');
+        function updateToggleUI() {
+            if (window.getDarkMode()) {
+                document.body.classList.add('dark-mode');
+                darkModeToggleText.textContent = 'Light Mode';
+                darkModeToggle.querySelector('i').classList.remove('fa-moon');
+                darkModeToggle.querySelector('i').classList.add('fa-sun');
+            } else {
+                document.body.classList.remove('dark-mode');
+                darkModeToggleText.textContent = 'Dark Mode';
+                darkModeToggle.querySelector('i').classList.remove('fa-sun');
+                darkModeToggle.querySelector('i').classList.add('fa-moon');
+            }
+        }
+        darkModeToggle.addEventListener('click', function() {
+            window.setDarkMode(!window.getDarkMode());
+            updateToggleUI();
+        });
+        window.addEventListener('storage', function(event) {
+            if (event.key === 'alfred-dark-mode') {
+                updateToggleUI();
+            }
+        });
+        updateToggleUI();
+    });
+    </script>
     <script src="script.js"></script>
     <style>
         body.dark-mode {
@@ -209,34 +238,5 @@
             color: #e0e0e0;
         }
     </style>
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const darkModeToggle = document.getElementById('dark-mode-toggle');
-        const darkModeToggleText = document.getElementById('dark-mode-toggle-text');
-        function updateToggleUI() {
-            if (window.getDarkMode()) {
-                document.body.classList.add('dark-mode');
-                darkModeToggleText.textContent = 'Light Mode';
-                darkModeToggle.querySelector('i').classList.remove('fa-moon');
-                darkModeToggle.querySelector('i').classList.add('fa-sun');
-            } else {
-                document.body.classList.remove('dark-mode');
-                darkModeToggleText.textContent = 'Dark Mode';
-                darkModeToggle.querySelector('i').classList.remove('fa-sun');
-                darkModeToggle.querySelector('i').classList.add('fa-moon');
-            }
-        }
-        darkModeToggle.addEventListener('click', function() {
-            window.setDarkMode(!window.getDarkMode());
-            updateToggleUI();
-        });
-        window.addEventListener('storage', function(event) {
-            if (event.key === 'alfred-dark-mode') {
-                updateToggleUI();
-            }
-        });
-        updateToggleUI();
-    });
-    </script>
 </body>
 </html> 
