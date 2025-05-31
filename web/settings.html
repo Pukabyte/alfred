@@ -18,6 +18,7 @@
                 <div class="brand">
                     <img src="/assets/logo.png" alt="Alfred Logo" class="logo-img">
                 </div>
+                <div id="scan-status-indicator-sidebar" class="scan-status-indicator" style="display:none; margin: 1em 0;"></div>
                 <ul>
                     <li>
                         <a href="/dashboard" class="sidebar-link">
@@ -108,6 +109,19 @@
                                     <label for="scan-interval">Scan Interval (minutes)</label>
                                     <div class="input-help">Background scan interval in minutes (0 to disable)</div>
                                     <input type="number" id="scan-interval" name="SCAN_INTERVAL" min="0" placeholder="60">
+                                </div>
+                                <div class="form-group">
+                                    <label for="pending-deletion-grace">Pending Deletion Grace Period (seconds)</label>
+                                    <div class="input-help">How long to wait before deleting a target after the last symlink is removed</div>
+                                    <input type="number" id="pending-deletion-grace" name="PENDING_DELETION_GRACE_SECONDS" min="0" placeholder="60">
+                                </div>
+                                <div class="form-group">
+                                    <label for="dry-run">Dry Run Mode</label>
+                                    <div class="input-help">If enabled, no files will actually be deleted</div>
+                                    <select id="dry-run" name="DRY_RUN">
+                                        <option value="false">Disabled</option>
+                                        <option value="true">Enabled</option>
+                                    </select>
                                 </div>
                             </div>
                             <div class="settings-actions">

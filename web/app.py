@@ -167,6 +167,15 @@ class StringIOHandler(logging.Handler):
         self.stream.write(msg + '\n')
         self.stream.flush()
 
+class ScanStatusLogFilter(logging.Filter):
+    def filter(self, record):
+        # Suppress logs for /api/scan-status endpoint
+        return '/api/scan-status' not in record.getMessage()
+
+# Suppress Flask's default access logs for /api/scan-status
+log = logging.getLogger('werkzeug')
+log.addFilter(ScanStatusLogFilter())
+
 @app.route('/api/scan-status')
 def get_scan_status():
     with scan_status_lock:
