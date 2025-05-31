@@ -771,7 +771,7 @@ def cleanup_pending_deletions():
         execute_with_retry(cursor, 'SELECT id, target FROM pending_deletions WHERE scheduled_time <= ?', (now,))
         rows = cursor.fetchall()
         for row in rows:
-            target = row['target']
+            target = row[1]
             # Check if any symlink now points to this target
             execute_with_retry(cursor, 'SELECT COUNT(*) as count FROM symlinks WHERE target = ?', (target,))
             count = cursor.fetchone()[0]
@@ -785,7 +785,7 @@ def cleanup_pending_deletions():
                 except Exception as e:
                     logger.error(f'Error deleting pending target {target}: {e}')
             # Remove from pending_deletions table
-            execute_with_retry(cursor, 'DELETE FROM pending_deletions WHERE id = ?', (row['id'],))
+            execute_with_retry(cursor, 'DELETE FROM pending_deletions WHERE id = ?', (row[0],))
         conn.commit()
 
 def start_pending_deletion_cleanup():
