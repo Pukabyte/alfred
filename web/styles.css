@@ -1738,4 +1738,85 @@ body.dark-mode .directory-path {
 }
 body.dark-mode .directory-status {
     border: 1px solid #36393f !important;
+}
+
+/* Headings in dark mode */
+body.dark-mode h1,
+body.dark-mode h2,
+body.dark-mode h3,
+body.dark-mode h4,
+body.dark-mode h5,
+body.dark-mode h6 {
+    color: #e0e0e0 !important;
+}
+
+/* Buttons in dark mode */
+body.dark-mode .primary-button {
+    background-color: #007bff !important;
+    color: #fff !important;
+    border: none !important;
+}
+body.dark-mode .primary-button:hover {
+    background-color: #0056b3 !important;
+    color: #fff !important;
+}
+body.dark-mode .secondary-button {
+    background-color: #6c757d !important;
+    color: #fff !important;
+    border: none !important;
+}
+body.dark-mode .secondary-button:hover {
+    background-color: #5a6268 !important;
+    color: #fff !important;
+}
+
+/* Stat cards (index.html, dashboard.html) in dark mode */
+body.dark-mode .stat-card,
+body.dark-mode .scan-result-card {
+    background: #202225 !important;
+    color: #e0e0e0 !important;
+    border-color: #36393f !important;
+}
+body.dark-mode .stat-info h3,
+body.dark-mode .stat-value {
+    color: #e0e0e0 !important;
+}
+
+/* Pagination controls and selectors in dark mode */
+body.dark-mode .pagination-controls,
+body.dark-mode #rows-per-page,
+body.dark-mode .pagination-button {
+    background: #23272a !important;
+    color: #e0e0e0 !important;
+    border-color: #36393f !important;
+}
+body.dark-mode .pagination-button.active {
+    background: #007bff !important;
+    color: #fff !important;
+    border-color: #007bff !important;
+}
+body.dark-mode .pagination-button:hover {
+    background: #36393f !important;
+    color: #fff !important;
+}
+
+/* Dashboard columns/cards separation in dark mode */
+body.dark-mode .stats-grid .stat-card,
+body.dark-mode .scan-results-grid .scan-result-card {
+    background: #23272a !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25) !important;
+    border: 1px solid #36393f !important;
+}
+
+/* Ensure all stat labels and values are light in dark mode */
+body.dark-mode .stat-label,
+body.dark-mode .stat-value,
+body.dark-mode .stat-info h3 {
+    color: #e0e0e0 !important;
+}
+
+/* Settings headings in dark mode */
+body.dark-mode .settings-group h3,
+body.dark-mode .form-group label {
+    color: #e0e0e0 !important;
 } 
