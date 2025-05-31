@@ -131,4 +131,22 @@ window.addEventListener('storage', (event) => {
 
 // Export for use in other scripts
 window.setDarkMode = setDarkMode;
-window.getDarkMode = getDarkMode; 
+window.getDarkMode = getDarkMode;
+
+// Ensure logo is correct on initial load
+function updateLogoForMode() {
+    const logoImg = document.querySelector('.logo-img');
+    if (!logoImg) return;
+    if (getDarkMode()) {
+        logoImg.src = '/assets/logo-dark.png';
+    } else {
+        logoImg.src = '/assets/logo.png';
+    }
+}
+
+// Call on DOMContentLoaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', updateLogoForMode);
+} else {
+    updateLogoForMode();
+} 
