@@ -307,7 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Scan status indicator polling
-    const scanStatusIndicator = document.getElementById('scan-status-indicator');
+    const scanStatusIndicator = document.getElementById('scan-status-indicator-sidebar');
     let scanStatusInterval = null;
 
     function updateScanStatusIndicator() {
