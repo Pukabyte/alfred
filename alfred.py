@@ -459,7 +459,8 @@ class SymlinkEventHandler(FileSystemEventHandler):
                     else:
                         upsert_symlink(event.dest_path)
                     conn.commit()
-                    update_metrics_if_needed(conn)
+                    with get_db_connection() as conn:
+                        update_metrics_if_needed(conn)
                     conn_used = True
             # Then handle the old location
             if os.path.exists(event.src_path) and os.path.islink(event.src_path):
@@ -485,10 +486,12 @@ class SymlinkEventHandler(FileSystemEventHandler):
                             execute_with_retry(cursor, 'DELETE FROM symlinks WHERE symlink = ?', (event.src_path,))
                             logger.info(f"\U0001F501 Decremented ref_count for target {target}, new ref_count is {ref_count}")
                     conn.commit()
-                    update_metrics_if_needed(conn)
+                    with get_db_connection() as conn:
+                        update_metrics_if_needed(conn)
                     conn_used = True
             if not conn_used:
-                update_metrics_if_needed()
+                with get_db_connection() as conn:
+                    update_metrics_if_needed(conn)
         except Exception as e:
             logger.error(f"Error handling movement from {event.src_path} to {event.dest_path}: {e}")
             logger.debug(traceback.format_exc())
