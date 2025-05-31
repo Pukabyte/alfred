@@ -21,6 +21,12 @@ DB_PATH = '/app/data/symlinks.db'
 # Add parent directory to Python path
 sys.path.append('/app')
 
+# Grace period for pending deletions (in seconds), configurable via environment variable
+PENDING_DELETION_GRACE_SECONDS = int(os.getenv('PENDING_DELETION_GRACE_SECONDS', '60'))  # Default: 1 minute
+
+DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true'
+RUN_ON_STARTUP = os.getenv('RUN_ON_STARTUP', 'true').lower() == 'true'
+
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH, timeout=30)  # 30 second timeout
     conn.row_factory = sqlite3.Row
@@ -295,37 +301,31 @@ def get_symlink(symlink):
 def delete_symlink(symlink):
     conn = get_db_connection()
     cursor = conn.cursor()
-    
     try:
-        # Get the target and ref_count before deleting
         execute_with_retry(cursor, 'SELECT target, ref_count FROM symlinks WHERE symlink = ?', (symlink,))
         result = cursor.fetchone()
-        
         if not result:
             return jsonify({'error': 'Symlink not found'}), 404
-        
+
         target, ref_count = result['target'], result['ref_count']
         deletion_reason = 'manual_deletion'
-        
-        # Delete the symlink
+
         execute_with_retry(cursor, 'DELETE FROM symlinks WHERE symlink = ?', (symlink,))
-        
-        # If this was the last reference to the target, delete the target file
+
         if ref_count == 1:
-            try:
-                if os.path.exists(target):
-                    os.remove(target)
-                    deletion_reason = 'last_reference_deleted'
-            except Exception as e:
-                conn.rollback()
-                return jsonify({'error': f'Error deleting target: {str(e)}'}), 500
-        
-        # Record the deletion with reason
+            # Instead of deleting immediately, schedule for deletion
+            scheduled_time = int(time.time()) + PENDING_DELETION_GRACE_SECONDS
+            execute_with_retry(cursor, '''
+                INSERT INTO pending_deletions (target, scheduled_time)
+                VALUES (?, ?)
+            ''', (target, scheduled_time))
+            deletion_reason = 'pending_deletion_scheduled'
+
         execute_with_retry(cursor, '''
             INSERT INTO deletions (symlink, target, timestamp, reason)
             VALUES (?, ?, ?, ?)
         ''', (symlink, target, int(time.time()), deletion_reason))
-        
+
         conn.commit()
         return jsonify({
             'message': 'Symlink deleted successfully',
@@ -333,10 +333,9 @@ def delete_symlink(symlink):
                 'symlink': symlink,
                 'target': target,
                 'was_last_reference': ref_count == 1,
-                'target_deleted': ref_count == 1 and not os.path.exists(target)
+                'target_pending_deletion': ref_count == 1
             }
         })
-        
     except Exception as e:
         conn.rollback()
         return jsonify({'error': f'Error during deletion: {str(e)}'}), 500
@@ -392,6 +391,14 @@ def init_db():
                 reason TEXT
             )
             ''')
+        
+        execute_with_retry(cursor, '''
+        CREATE TABLE IF NOT EXISTS pending_deletions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target TEXT NOT NULL,
+            scheduled_time INTEGER NOT NULL
+        )
+        ''')
         
         conn.commit()
 

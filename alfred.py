@@ -8,12 +8,16 @@ from loguru import logger
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from fnmatch import fnmatch
+import threading
 
 # Get directories from environment variables
 symlink_directories = os.getenv('SYMLINK_DIR')
 torrents_directories = os.getenv('TORRENTS_DIR')
 delete_behavior = os.getenv('DELETE_BEHAVIOR', 'files').lower()
 scan_interval = int(os.getenv('SCAN_INTERVAL', '720'))  # Default to 12 hours if not set
+PENDING_DELETION_GRACE_SECONDS = int(os.getenv('PENDING_DELETION_GRACE_SECONDS', '60'))
+DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true'
+RUN_ON_STARTUP = os.getenv('RUN_ON_STARTUP', 'true').lower() == 'true'
 
 if not symlink_directories or not torrents_directories:
     logger.error("Required environment variables SYMLINK_DIR and TORRENTS_DIR must be set")
@@ -106,6 +110,13 @@ def create_table(conn):
         files_checked INTEGER DEFAULT 0,
         files_deleted INTEGER DEFAULT 0,
         folders_deleted INTEGER DEFAULT 0
+    )
+    ''')
+    execute_with_retry(cursor, '''
+    CREATE TABLE IF NOT EXISTS pending_deletions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target TEXT NOT NULL,
+        scheduled_time INTEGER NOT NULL
     )
     ''')
     conn.commit()
@@ -323,40 +334,18 @@ def delete_missing_target(symlink, dry_run):
         if row:
             target = row[0]
             logger.info(f"🔍 Found target {target} for symlink {symlink}")
-            
             # Check how many symlinks point to this target
             execute_with_retry(cursor, 'SELECT COUNT(*) FROM symlinks WHERE target = ?', (target,))
             total_refs = cursor.fetchone()[0]
             logger.info(f"🔍 Target {target} has {total_refs} references")
-            
             if total_refs == 1:
-                # This is the last reference, delete the target first
-                logger.info(f"🎯 This is the last reference to {target}, will delete target")
-                if os.path.exists(target):
-                    if dry_run:
-                        logger.info(f"🟠 Dry-run: Would delete target: {target}")
-                    else:
-                        try:
-                            if delete_behavior == 'files':
-                                # Delete the target file directly
-                                os.remove(target)
-                                logger.info(f"❌ Deleted file: {target}")
-                            else:  # folders
-                                # Delete the parent directory of the target
-                                parent_dir = os.path.dirname(target)
-                                if os.path.exists(parent_dir):
-                                    import shutil
-                                    shutil.rmtree(parent_dir)
-                                    logger.info(f"❌ Deleted parent folder: {parent_dir}")
-                                else:
-                                    logger.info(f"Parent folder {parent_dir} does not exist. Skipping deletion.")
-                        except Exception as e:
-                            logger.error(f"Error deleting target {target}: {e}")
-                            logger.error(traceback.format_exc())
-                            return  # Don't commit if deletion failed
-                else:
-                    logger.info(f"Target {target} does not exist. Skipping deletion.")
-                
+                # This is the last reference, schedule for deletion
+                scheduled_time = int(time.time()) + PENDING_DELETION_GRACE_SECONDS
+                execute_with_retry(cursor, '''
+                    INSERT INTO pending_deletions (target, scheduled_time)
+                    VALUES (?, ?)
+                ''', (target, scheduled_time))
+                logger.info(f"⏳ Scheduled target {target} for deletion in {PENDING_DELETION_GRACE_SECONDS} seconds")
                 # Remove all entries for this target from the database
                 execute_with_retry(cursor, 'DELETE FROM symlinks WHERE target = ?', (target,))
                 logger.info(f"❌ Removed all database entries for target: {target}")
@@ -364,7 +353,6 @@ def delete_missing_target(symlink, dry_run):
                 # Just remove this symlink entry
                 execute_with_retry(cursor, 'DELETE FROM symlinks WHERE symlink = ?', (symlink,))
                 logger.info(f"🔄 Target {target} still has {total_refs - 1} references")
-            
             conn.commit()
         else:
             logger.warning(f"⚠️ No database entry found for symlink {symlink}")
@@ -372,27 +360,12 @@ def delete_missing_target(symlink, dry_run):
             try:
                 if os.path.islink(symlink):
                     target = os.readlink(symlink)
-                    if os.path.exists(target):
-                        if dry_run:
-                            logger.info(f"🟠 Dry-run: Would delete target: {target}")
-                        else:
-                            try:
-                                if delete_behavior == 'files':
-                                    # Delete the target file directly
-                                    os.remove(target)
-                                    logger.info(f"❌ Deleted file: {target}")
-                                else:  # folders
-                                    # Delete the parent directory of the target
-                                    parent_dir = os.path.dirname(target)
-                                    if os.path.exists(parent_dir):
-                                        import shutil
-                                        shutil.rmtree(parent_dir)
-                                        logger.info(f"❌ Deleted parent folder: {parent_dir}")
-                                    else:
-                                        logger.info(f"Parent folder {parent_dir} does not exist. Skipping deletion.")
-                            except Exception as e:
-                                logger.error(f"Error deleting target {target}: {e}")
-                                logger.error(traceback.format_exc())
+                    scheduled_time = int(time.time()) + PENDING_DELETION_GRACE_SECONDS
+                    execute_with_retry(cursor, '''
+                        INSERT INTO pending_deletions (target, scheduled_time)
+                        VALUES (?, ?)
+                    ''', (target, scheduled_time))
+                    logger.info(f"⏳ Scheduled target {target} for deletion in {PENDING_DELETION_GRACE_SECONDS} seconds (no DB entry)")
             except Exception as e:
                 logger.error(f"Error handling symlink {symlink}: {e}")
                 logger.error(traceback.format_exc())
@@ -436,39 +409,22 @@ class SymlinkEventHandler(FileSystemEventHandler):
                     target, ref_count = row
                     ref_count -= 1
                     if ref_count <= 0:
-                        # Delete the target file if it exists
-                        if os.path.exists(target):
-                            if not self.dry_run:
-                                try:
-                                    if delete_behavior == 'files':
-                                        if os.path.isfile(target) or os.path.islink(target):
-                                            os.remove(target)
-                                            logger.info(f"❌ Deleted file: {target}")
-                                        else:
-                                            logger.info(f"Target {target} is not a file. Skipping deletion.")
-                                    else:  # folders
-                                        parent_dir = os.path.dirname(target)
-                                        if os.path.exists(parent_dir):
-                                            import shutil
-                                            shutil.rmtree(parent_dir)
-                                            logger.info(f"❌ Deleted parent folder: {parent_dir}")
-                                        else:
-                                            logger.info(f"Parent folder {parent_dir} does not exist. Skipping deletion.")
-                                except Exception as e:
-                                    logger.error(f"Error deleting target {target}: {e}")
-                                    logger.error(traceback.format_exc())
+                        # Schedule for deletion instead of deleting immediately
+                        scheduled_time = int(time.time()) + PENDING_DELETION_GRACE_SECONDS
+                        execute_with_retry(cursor, '''
+                            INSERT INTO pending_deletions (target, scheduled_time)
+                            VALUES (?, ?)
+                        ''', (target, scheduled_time))
+                        logger.info(f"⏳ Scheduled target {target} for deletion in {PENDING_DELETION_GRACE_SECONDS} seconds (event handler)")
                         execute_with_retry(cursor, 'DELETE FROM symlinks WHERE target = ?', (target,))
-                        # Record deletion with reason
                         execute_with_retry(cursor, '''
                             INSERT INTO deletions (symlink, target, timestamp, reason)
                             VALUES (?, ?, ?, ?)
                         ''', (event.src_path, target, int(time.time()), 'last_reference_deleted'))
                         logger.info(f"❌ Removed symlink entry from database: {event.src_path} (was pointing to {target})")
                     else:
-                        # Update ref_count and remove symlink entry
                         execute_with_retry(cursor, 'UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
                         execute_with_retry(cursor, 'DELETE FROM symlinks WHERE symlink = ?', (event.src_path,))
-                        # Record deletion with reason
                         execute_with_retry(cursor, '''
                             INSERT INTO deletions (symlink, target, timestamp, reason)
                             VALUES (?, ?, ?, ?)
@@ -485,68 +441,47 @@ class SymlinkEventHandler(FileSystemEventHandler):
     def on_moved(self, event):
         try:
             logger.debug(f"📝 Detected move event: {event.src_path} -> {event.dest_path}")
-            
             # First handle the new location
             if os.path.islink(event.dest_path):
                 logger.info(f"🔗 Symlink moved to: {event.dest_path}")
-                # Get the target before updating the database
                 target = os.readlink(event.dest_path)
-                # Update the database with the new location
                 with get_db_connection() as conn:
                     cursor = conn.cursor()
-                    # Check if the target exists in the database
                     execute_with_retry(cursor, 'SELECT ref_count FROM symlinks WHERE target = ?', (target,))
                     target_row = cursor.fetchone()
                     if target_row:
-                        # Increment ref_count since we're adding a new symlink
                         ref_count = target_row[0] + 1
                         execute_with_retry(cursor, 'UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
-                        # Add the new symlink
                         execute_with_retry(cursor, 'INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', 
                                          (event.dest_path, target, ref_count))
                         logger.info(f"🔄 Updated ref_count for target {target}, new ref_count is {ref_count}")
                     else:
-                        # If target doesn't exist, add it as a new entry
                         upsert_symlink(event.dest_path)
                     conn.commit()
-            
             # Then handle the old location
             if os.path.exists(event.src_path) and os.path.islink(event.src_path):
                 logger.info(f"🔗 Cleaning up old symlink: {event.src_path}")
-                # Get the target before deleting
                 target = os.readlink(event.src_path)
                 with get_db_connection() as conn:
                     cursor = conn.cursor()
-                    # Decrement ref_count
                     execute_with_retry(cursor, 'SELECT ref_count FROM symlinks WHERE target = ?', (target,))
                     target_row = cursor.fetchone()
                     if target_row:
                         ref_count = target_row[0] - 1
                         if ref_count <= 0:
-                            # Delete the target if it exists
-                            if os.path.exists(target):
-                                if not self.dry_run:
-                                    if delete_behavior == 'files':
-                                        if os.path.isfile(target):
-                                            os.remove(target)
-                                            logger.info(f"❌ Deleted file: {target}")
-                                        elif os.path.isdir(target):
-                                            # For directories, only delete files inside, not the directory itself
-                                            for root, _, files in os.walk(target):
-                                                for file in files:
-                                                    file_path = os.path.join(root, file)
-                                                    if os.path.isfile(file_path):
-                                                        os.remove(file_path)
-                                                        logger.info(f"❌ Deleted file: {file_path}")
+                            scheduled_time = int(time.time()) + PENDING_DELETION_GRACE_SECONDS
+                            execute_with_retry(cursor, '''
+                                INSERT INTO pending_deletions (target, scheduled_time)
+                                VALUES (?, ?)
+                            ''', (target, scheduled_time))
+                            logger.info(f"⏳ Scheduled target {target} for deletion in {PENDING_DELETION_GRACE_SECONDS} seconds (move handler)")
                             execute_with_retry(cursor, 'DELETE FROM symlinks WHERE target = ?', (target,))
                             logger.info(f"❌ Removed symlink entry from database: {event.src_path} (was pointing to {target})")
                         else:
-                            # Update ref_count and remove symlink entry
                             execute_with_retry(cursor, 'UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
                             execute_with_retry(cursor, 'DELETE FROM symlinks WHERE symlink = ?', (event.src_path,))
                             logger.info(f"🔄 Decremented ref_count for target {target}, new ref_count is {ref_count}")
                     conn.commit()
-            
             update_metrics_if_needed(conn)
         except Exception as e:
             logger.error(f"Error handling movement from {event.src_path} to {event.dest_path}: {e}")
@@ -688,6 +623,7 @@ def reload_env_settings():
         torrents_directories = os.getenv('TORRENTS_DIR', '').split(',')
         delete_behavior = os.getenv('DELETE_BEHAVIOR', 'files').lower()
         scan_interval = int(os.getenv('SCAN_INTERVAL', '720'))
+        PENDING_DELETION_GRACE_SECONDS = int(os.getenv('PENDING_DELETION_GRACE_SECONDS', '60'))
 
         # Clean up and validate directories
         symlink_directories = [path.strip() for path in symlink_directories if path.strip()]
@@ -786,7 +722,6 @@ def main(dry_run, no_confirm, exclude_patterns):
 
     # Start background scan if interval is set
     if scan_interval > 0:
-        import threading
         background_thread = threading.Thread(
             target=background_scan,
             args=(dry_run, no_confirm, exclude_patterns),
@@ -809,6 +744,39 @@ def main(dry_run, no_confirm, exclude_patterns):
         logger.info("🛑 Real-time scanning stopped by user.")
     observer.join()
 
+def cleanup_pending_deletions():
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        now = int(time.time())
+        execute_with_retry(cursor, 'SELECT id, target FROM pending_deletions WHERE scheduled_time <= ?', (now,))
+        rows = cursor.fetchall()
+        for row in rows:
+            target = row['target']
+            # Check if any symlink now points to this target
+            execute_with_retry(cursor, 'SELECT COUNT(*) as count FROM symlinks WHERE target = ?', (target,))
+            count = cursor.fetchone()[0]
+            if count == 0 and os.path.exists(target):
+                try:
+                    if not DRY_RUN:
+                        os.remove(target)
+                        logger.info(f"❌ Deleted pending target file: {target}")
+                    else:
+                        logger.info(f"🟠 Dry-run: Would delete pending target file: {target}")
+                except Exception as e:
+                    logger.error(f'Error deleting pending target {target}: {e}')
+            # Remove from pending_deletions table
+            execute_with_retry(cursor, 'DELETE FROM pending_deletions WHERE id = ?', (row['id'],))
+        conn.commit()
+
+def start_pending_deletion_cleanup():
+    while True:
+        cleanup_pending_deletions()
+        time.sleep(60)
+
+if RUN_ON_STARTUP:
+    cleanup_thread = threading.Thread(target=start_pending_deletion_cleanup, daemon=True)
+    cleanup_thread.start()
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manage symlinks and their targets.")
     parser.add_argument('--dry-run', action='store_true', help="Run the script in dry-run mode without deleting any files.")
@@ -821,8 +789,14 @@ if __name__ == "__main__":
     torrents_directories = args.torrents_directories
     exclude_patterns = args.exclude
 
+    # Determine dry_run mode: CLI flag overrides env
+    dry_run = args.dry_run or DRY_RUN
+
     try:
-        main(args.dry_run, args.no_confirm, exclude_patterns)
+        if RUN_ON_STARTUP:
+            main(dry_run, args.no_confirm, exclude_patterns)
+        else:
+            logger.info("RUN_ON_STARTUP is false. Exiting without running background scan.")
     except KeyboardInterrupt:
         logger.info("🛑 Script terminated by user.")
     except Exception as e:
