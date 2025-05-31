@@ -430,6 +430,60 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Scan status indicator polling for sidebar only
+    const scanStatusIndicatorSidebar = document.getElementById('scan-status-indicator-sidebar');
+    let scanStatusInterval = null;
+
+    function updateScanStatusIndicator() {
+        fetch('/api/scan-status')
+            .then(response => response.json())
+            .then(status => {
+                if (scanStatusIndicatorSidebar) {
+                    if (status.running) {
+                        scanStatusIndicatorSidebar.style.display = 'block';
+                        scanStatusIndicatorSidebar.innerHTML = '<span class="scan-spinner"></span> Scan in progress...';
+                    } else {
+                        scanStatusIndicatorSidebar.style.display = 'none';
+                        scanStatusIndicatorSidebar.innerHTML = '';
+                    }
+                }
+            })
+            .catch(() => {
+                if (scanStatusIndicatorSidebar) {
+                    scanStatusIndicatorSidebar.style.display = 'none';
+                    scanStatusIndicatorSidebar.innerHTML = '';
+                }
+            });
+    }
+
+    // Add spinner CSS if not already present
+    if (!document.getElementById('scan-spinner-style')) {
+        const style = document.createElement('style');
+        style.id = 'scan-spinner-style';
+        style.innerHTML = `
+        .scan-spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 3px solid #ccc;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        `;
+        document.head.appendChild(style);
+    }
+
+    // Start polling for scan status
+    scanStatusInterval = setInterval(updateScanStatusIndicator, 2000);
+    updateScanStatusIndicator();
+
     // Initial data fetch
     fetchDashboardData();
 }); 
