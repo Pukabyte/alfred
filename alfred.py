@@ -714,6 +714,11 @@ def main(dry_run, no_confirm, exclude_patterns):
             time_until_next = next_scan - int(time.time())
             logger.info(f"⏳ Skipping initial scan. Next scan in {time_until_next//60} minutes")
 
+    # Start the cleanup thread AFTER the tables are created
+    if RUN_ON_STARTUP:
+        cleanup_thread = threading.Thread(target=start_pending_deletion_cleanup, daemon=True)
+        cleanup_thread.start()
+
     logger.info("")
     logger.info("🔍 Setting up real-time monitoring...")
     logger.info(f"🔍 Monitoring symlink directories: {', '.join(symlink_directories)}")
@@ -772,10 +777,6 @@ def start_pending_deletion_cleanup():
     while True:
         cleanup_pending_deletions()
         time.sleep(60)
-
-if RUN_ON_STARTUP:
-    cleanup_thread = threading.Thread(target=start_pending_deletion_cleanup, daemon=True)
-    cleanup_thread.start()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manage symlinks and their targets.")

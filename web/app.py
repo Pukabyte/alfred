@@ -12,6 +12,7 @@ import json
 import logging
 import traceback
 from loguru import logger
+import threading
 
 app = Flask(__name__, static_folder='.')
 
@@ -23,6 +24,16 @@ sys.path.append('/app')
 
 # Grace period for pending deletions (in seconds), configurable via environment variable
 PENDING_DELETION_GRACE_SECONDS = int(os.getenv('PENDING_DELETION_GRACE_SECONDS', '60'))  # Default: 1 minute
+
+# Thread-safe scan status indicator
+default_scan_status = {
+    'running': False,
+    'last_started': None,
+    'last_finished': None,
+    'last_type': None  # 'manual' or 'auto'
+}
+scan_status = default_scan_status.copy()
+scan_status_lock = threading.Lock()
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH, timeout=30)  # 30 second timeout
@@ -156,6 +167,11 @@ class StringIOHandler(logging.Handler):
         self.stream.write(msg + '\n')
         self.stream.flush()
 
+@app.route('/api/scan-status')
+def get_scan_status():
+    with scan_status_lock:
+        return jsonify(scan_status)
+
 @app.route('/api/scan', methods=['POST'])
 def run_scan():
     data = request.get_json()
@@ -163,7 +179,11 @@ def run_scan():
     no_confirm = data.get('no_confirm', False)
     
     def generate():
-        # Set up string IO handler
+        # Set scan status to running
+        with scan_status_lock:
+            scan_status['running'] = True
+            scan_status['last_started'] = int(time.time())
+            scan_status['last_type'] = 'manual'
         output = StringIO()
         handler_id = None
         
@@ -248,6 +268,10 @@ def run_scan():
             logger.error(error_msg)
             yield error_msg
         finally:
+            # Set scan status to not running
+            with scan_status_lock:
+                scan_status['running'] = False
+                scan_status['last_finished'] = int(time.time())
             # Remove the handler if it was added
             try:
                 if handler_id is not None:

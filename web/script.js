@@ -305,4 +305,51 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('unhandledrejection', function(event) {
         console.error('Unhandled promise rejection:', event.reason);
     });
+
+    // Scan status indicator polling
+    const scanStatusIndicator = document.getElementById('scan-status-indicator');
+    let scanStatusInterval = null;
+
+    function updateScanStatusIndicator() {
+        fetch('/api/scan-status')
+            .then(response => response.json())
+            .then(status => {
+                if (status.running) {
+                    scanStatusIndicator.style.display = 'block';
+                    scanStatusIndicator.innerHTML = '<span class="scan-spinner"></span> Scan in progress...';
+                } else {
+                    scanStatusIndicator.style.display = 'none';
+                    scanStatusIndicator.innerHTML = '';
+                }
+            })
+            .catch(() => {
+                scanStatusIndicator.style.display = 'none';
+                scanStatusIndicator.innerHTML = '';
+            });
+    }
+
+    // Add spinner CSS
+    const style = document.createElement('style');
+    style.innerHTML = `
+    .scan-spinner {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        border: 3px solid #ccc;
+        border-top: 3px solid #007bff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-right: 8px;
+        vertical-align: middle;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    `;
+    document.head.appendChild(style);
+
+    // Start polling for scan status
+    scanStatusInterval = setInterval(updateScanStatusIndicator, 2000);
+    updateScanStatusIndicator();
 }); 
