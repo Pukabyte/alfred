@@ -1770,6 +1770,132 @@ body.dark-mode .secondary-button:hover {
     color: #fff !important;
 }
 
+/* Stat item in dark mode */
+body.dark-mode .stat-item {
+    background-color: #23272a !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #36393f !important;
+}
+
+/* Table controls in dark mode */
+body.dark-mode .table-controls {
+    background-color: #23272a !important;
+    color: #e0e0e0 !important;
+    border-bottom: 1px solid #36393f !important;
+}
+body.dark-mode .table-controls input,
+body.dark-mode .table-controls select {
+    background: #181a1b !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #36393f !important;
+}
+
+/* Add/Remove directory buttons in dark mode */
+body.dark-mode .directory-input-group .remove-dir-btn {
+    background-color: #dc3545 !important;
+    color: #fff !important;
+    border: none !important;
+}
+body.dark-mode .directory-input-group .remove-dir-btn:hover {
+    background-color: #c82333 !important;
+    color: #fff !important;
+}
+body.dark-mode #add-symlink-dir,
+body.dark-mode #add-torrent-dir {
+    background-color: #28a745 !important;
+    color: #fff !important;
+    border: none !important;
+}
+body.dark-mode #add-symlink-dir:hover,
+body.dark-mode #add-torrent-dir:hover {
+    background-color: #218838 !important;
+    color: #fff !important;
+}
+
+/* Sidebar toggle (menu collapse) in dark mode */
+body.dark-mode .sidebar-toggle {
+    background: #23272a !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #36393f !important;
+}
+body.dark-mode .sidebar-toggle:hover {
+    background: #36393f !important;
+    color: #fff !important;
+}
+
+/* Hide dark mode toggle text when sidebar is collapsed */
+.sidebar.collapsed #dark-mode-toggle-text {
+    display: none !important;
+}
+
+/* Directory Status Sidebar - Light Mode */
+.directory-status-sidebar,
+.directory-section,
+.directory-item {
+    background: #f8f9fa;
+    color: #23272a;
+    border-radius: 4px;
+}
+.directory-status-sidebar h3,
+.directory-section h4 {
+    color: #495057;
+}
+.directory-path {
+    color: #495057;
+}
+.directory-status {
+    border: 1px solid #e9ecef;
+}
+
+/* Directory Status Sidebar - Dark Mode (already present, but ensure specificity) */
+body.dark-mode .directory-status-sidebar,
+body.dark-mode .directory-section,
+body.dark-mode .directory-item {
+    background: #23272a !important;
+    color: #e0e0e0 !important;
+    border-color: #36393f !important;
+}
+body.dark-mode .directory-status-sidebar h3,
+body.dark-mode .directory-section h4 {
+    color: #b0b0b0 !important;
+}
+body.dark-mode .directory-path {
+    color: #b0b0b0 !important;
+}
+body.dark-mode .directory-status {
+    border: 1px solid #36393f !important;
+}
+
+/* Headings in dark mode */
+body.dark-mode h1,
+body.dark-mode h2,
+body.dark-mode h3,
+body.dark-mode h4,
+body.dark-mode h5,
+body.dark-mode h6 {
+    color: #e0e0e0 !important;
+}
+
+/* Buttons in dark mode */
+body.dark-mode .primary-button {
+    background-color: #007bff !important;
+    color: #fff !important;
+    border: none !important;
+}
+body.dark-mode .primary-button:hover {
+    background-color: #0056b3 !important;
+    color: #fff !important;
+}
+body.dark-mode .secondary-button {
+    background-color: #6c757d !important;
+    color: #fff !important;
+    border: none !important;
+}
+body.dark-mode .secondary-button:hover {
+    background-color: #5a6268 !important;
+    color: #fff !important;
+}
+
 /* Stat cards (index.html, dashboard.html) in dark mode */
 body.dark-mode .stat-card,
 body.dark-mode .scan-result-card {
