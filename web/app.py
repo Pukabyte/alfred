@@ -24,9 +24,6 @@ sys.path.append('/app')
 # Grace period for pending deletions (in seconds), configurable via environment variable
 PENDING_DELETION_GRACE_SECONDS = int(os.getenv('PENDING_DELETION_GRACE_SECONDS', '60'))  # Default: 1 minute
 
-DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true'
-RUN_ON_STARTUP = os.getenv('RUN_ON_STARTUP', 'true').lower() == 'true'
-
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH, timeout=30)  # 30 second timeout
     conn.row_factory = sqlite3.Row
