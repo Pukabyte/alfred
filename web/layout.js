@@ -106,8 +106,14 @@ document.addEventListener('DOMContentLoaded', () => {
 function setDarkMode(enabled) {
     if (enabled) {
         document.body.classList.add('dark-mode');
+        // Switch logo to dark
+        const logoImg = document.querySelector('.logo-img');
+        if (logoImg) logoImg.src = '/assets/logo-dark.png';
     } else {
         document.body.classList.remove('dark-mode');
+        // Switch logo to light
+        const logoImg = document.querySelector('.logo-img');
+        if (logoImg) logoImg.src = '/assets/logo.png';
     }
     localStorage.setItem('alfred-dark-mode', enabled ? 'true' : 'false');
 }

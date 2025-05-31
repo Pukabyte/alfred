@@ -1546,4 +1546,158 @@ main {
 
 #add-torrent-dir i {
     font-size: 0.875rem;
+}
+
+/* --- DARK MODE --- */
+body.dark-mode {
+    background: #181a1b !important;
+    color: #e0e0e0 !important;
+}
+body.dark-mode .sidebar,
+body.dark-mode .sidebar-content,
+body.dark-mode .directory-status-sidebar,
+body.dark-mode .directory-section,
+body.dark-mode .directory-item {
+    background: #23272a !important;
+    color: #e0e0e0 !important;
+    border-color: #36393f !important;
+}
+body.dark-mode .sidebar-link,
+body.dark-mode .sidebar-link.active {
+    color: #e0e0e0 !important;
+}
+body.dark-mode .sidebar-link.active {
+    background: #36393f !important;
+}
+body.dark-mode .main-content,
+body.dark-mode .main-content-boxes,
+body.dark-mode .box,
+body.dark-mode .box-section1,
+body.dark-mode .box-title,
+body.dark-mode .table-container,
+body.dark-mode .modal-content {
+    background: #23272a !important;
+    color: #e0e0e0 !important;
+    border-color: #36393f !important;
+}
+body.dark-mode .box-section1 {
+    border-bottom: 1px solid #36393f !important;
+}
+body.dark-mode .box-title h2,
+body.dark-mode .box-title p,
+body.dark-mode .stat-info h3,
+body.dark-mode .stat-value {
+    color: #e0e0e0 !important;
+}
+body.dark-mode .stat-card,
+body.dark-mode .scan-result-card {
+    background: #23272a !important;
+    color: #e0e0e0 !important;
+    border-color: #36393f !important;
+}
+body.dark-mode .stat-card i,
+body.dark-mode .scan-result-card i {
+    color: #4fc3f7 !important;
+}
+body.dark-mode .primary-button,
+body.dark-mode .secondary-button {
+    background: #36393f !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #23272a !important;
+}
+body.dark-mode .primary-button:hover,
+body.dark-mode .secondary-button:hover {
+    background: #23272a !important;
+    color: #fff !important;
+}
+body.dark-mode .scan-status-indicator,
+body.dark-mode .scan-status {
+    background: #23272a !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #36393f !important;
+}
+body.dark-mode input,
+body.dark-mode select,
+body.dark-mode textarea {
+    background: #181a1b !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #36393f !important;
+}
+body.dark-mode .table-container table,
+body.dark-mode .table-container th,
+body.dark-mode .table-container td {
+    background: #23272a !important;
+    color: #e0e0e0 !important;
+    border-color: #36393f !important;
+}
+body.dark-mode .table-container th.sortable:hover {
+    background: #36393f !important;
+}
+body.dark-mode .table-container tr:hover {
+    background: #23272a !important;
+}
+body.dark-mode .modal-content {
+    background: #23272a !important;
+    color: #e0e0e0 !important;
+    border-color: #36393f !important;
+}
+body.dark-mode .modal-header,
+body.dark-mode .modal-body {
+    background: #23272a !important;
+    color: #e0e0e0 !important;
+}
+body.dark-mode .close-modal {
+    color: #e0e0e0 !important;
+}
+body.dark-mode .save-status.success {
+    background-color: #234d20 !important;
+    border: 1px solid #357a38 !important;
+    color: #b9f6ca !important;
+}
+body.dark-mode .save-status.error {
+    background-color: #4a2323 !important;
+    border: 1px solid #b71c1c !important;
+    color: #ff8a80 !important;
+}
+body.dark-mode .save-status.warning {
+    background-color: #4a3a23 !important;
+    border: 1px solid #ffb300 !important;
+    color: #ffe082 !important;
+}
+body.dark-mode .loading-animation {
+    background: #23272a !important;
+    color: #e0e0e0 !important;
+}
+body.dark-mode .directory-input-group input {
+    background: #181a1b !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #36393f !important;
+}
+body.dark-mode .directory-input-group .remove-dir-btn {
+    background: #36393f !important;
+    color: #e0e0e0 !important;
+}
+body.dark-mode .directory-input-group .remove-dir-btn:hover {
+    background: #23272a !important;
+    color: #fff !important;
+}
+body.dark-mode .form-group label,
+body.dark-mode .form-group .input-help {
+    color: #b0b0b0 !important;
+}
+body.dark-mode .chart-container {
+    background: #23272a !important;
+}
+body.dark-mode .pagination-button {
+    background: #36393f !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #23272a !important;
+}
+body.dark-mode .pagination-button:hover {
+    background: #23272a !important;
+    color: #fff !important;
+}
+body.dark-mode .pagination-button:disabled {
+    background: #23272a !important;
+    color: #888 !important;
 } 
