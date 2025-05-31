@@ -100,4 +100,29 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Refresh directory status every 30 seconds
     setInterval(updateDirectoryStatus, 30000);
-}); 
+});
+
+// Global dark mode logic
+function setDarkMode(enabled) {
+    if (enabled) {
+        document.body.classList.add('dark-mode');
+    } else {
+        document.body.classList.remove('dark-mode');
+    }
+    localStorage.setItem('alfred-dark-mode', enabled ? 'true' : 'false');
+}
+
+function getDarkMode() {
+    return localStorage.getItem('alfred-dark-mode') === 'true';
+}
+
+// Listen for changes to dark mode in other tabs
+window.addEventListener('storage', (event) => {
+    if (event.key === 'alfred-dark-mode') {
+        setDarkMode(event.newValue === 'true');
+    }
+});
+
+// Export for use in other scripts
+window.setDarkMode = setDarkMode;
+window.getDarkMode = getDarkMode; 

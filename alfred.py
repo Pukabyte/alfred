@@ -440,10 +440,11 @@ class SymlinkEventHandler(FileSystemEventHandler):
 
     def on_moved(self, event):
         try:
-            logger.debug(f"📝 Detected move event: {event.src_path} -> {event.dest_path}")
+            logger.debug(f"\U0001F4DD Detected move event: {event.src_path} -> {event.dest_path}")
+            conn_used = False
             # First handle the new location
             if os.path.islink(event.dest_path):
-                logger.info(f"🔗 Symlink moved to: {event.dest_path}")
+                logger.info(f"\U0001F517 Symlink moved to: {event.dest_path}")
                 target = os.readlink(event.dest_path)
                 with get_db_connection() as conn:
                     cursor = conn.cursor()
@@ -454,13 +455,15 @@ class SymlinkEventHandler(FileSystemEventHandler):
                         execute_with_retry(cursor, 'UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
                         execute_with_retry(cursor, 'INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', 
                                          (event.dest_path, target, ref_count))
-                        logger.info(f"🔄 Updated ref_count for target {target}, new ref_count is {ref_count}")
+                        logger.info(f"\U0001F501 Updated ref_count for target {target}, new ref_count is {ref_count}")
                     else:
                         upsert_symlink(event.dest_path)
                     conn.commit()
+                    update_metrics_if_needed(conn)
+                    conn_used = True
             # Then handle the old location
             if os.path.exists(event.src_path) and os.path.islink(event.src_path):
-                logger.info(f"🔗 Cleaning up old symlink: {event.src_path}")
+                logger.info(f"\U0001F517 Cleaning up old symlink: {event.src_path}")
                 target = os.readlink(event.src_path)
                 with get_db_connection() as conn:
                     cursor = conn.cursor()
@@ -474,15 +477,18 @@ class SymlinkEventHandler(FileSystemEventHandler):
                                 INSERT INTO pending_deletions (target, scheduled_time)
                                 VALUES (?, ?)
                             ''', (target, scheduled_time))
-                            logger.info(f"⏳ Scheduled target {target} for deletion in {PENDING_DELETION_GRACE_SECONDS} seconds (move handler)")
+                            logger.info(f"\u23F3 Scheduled target {target} for deletion in {PENDING_DELETION_GRACE_SECONDS} seconds (move handler)")
                             execute_with_retry(cursor, 'DELETE FROM symlinks WHERE target = ?', (target,))
-                            logger.info(f"❌ Removed symlink entry from database: {event.src_path} (was pointing to {target})")
+                            logger.info(f"\u274C Removed symlink entry from database: {event.src_path} (was pointing to {target})")
                         else:
                             execute_with_retry(cursor, 'UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
                             execute_with_retry(cursor, 'DELETE FROM symlinks WHERE symlink = ?', (event.src_path,))
-                            logger.info(f"🔄 Decremented ref_count for target {target}, new ref_count is {ref_count}")
+                            logger.info(f"\U0001F501 Decremented ref_count for target {target}, new ref_count is {ref_count}")
                     conn.commit()
-            update_metrics_if_needed(conn)
+                    update_metrics_if_needed(conn)
+                    conn_used = True
+            if not conn_used:
+                update_metrics_if_needed()
         except Exception as e:
             logger.error(f"Error handling movement from {event.src_path} to {event.dest_path}: {e}")
             logger.debug(traceback.format_exc())
@@ -596,6 +602,7 @@ def update_metrics_if_needed(conn):
 def reload_env_settings():
     """Reload environment variables and reinitialize components."""
     global symlink_directories, torrents_directories, delete_behavior, scan_interval
+    global PENDING_DELETION_GRACE_SECONDS, DRY_RUN, RUN_ON_STARTUP
 
     try:
         # Read and parse the .env file
@@ -624,6 +631,8 @@ def reload_env_settings():
         delete_behavior = os.getenv('DELETE_BEHAVIOR', 'files').lower()
         scan_interval = int(os.getenv('SCAN_INTERVAL', '720'))
         PENDING_DELETION_GRACE_SECONDS = int(os.getenv('PENDING_DELETION_GRACE_SECONDS', '60'))
+        DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true'
+        RUN_ON_STARTUP = os.getenv('RUN_ON_STARTUP', 'true').lower() == 'true'
 
         # Clean up and validate directories
         symlink_directories = [path.strip() for path in symlink_directories if path.strip()]
@@ -658,6 +667,9 @@ def reload_env_settings():
         logger.info(f"📁 Torrent directories: {', '.join(torrents_directories)}")
         logger.info(f"🗑️ Delete behavior: {delete_behavior}")
         logger.info(f"⏱️ Scan interval: {scan_interval} minutes")
+        logger.info(f"🕒 Pending deletion grace period: {PENDING_DELETION_GRACE_SECONDS} seconds")
+        logger.info(f"🧪 Dry run mode: {DRY_RUN}")
+        logger.info(f"🚦 Run on startup: {RUN_ON_STARTUP}")
 
         return True
 

@@ -18,6 +18,9 @@
                 <div class="brand">
                     <img src="/assets/logo.png" alt="Alfred Logo" class="logo-img">
                 </div>
+                <button id="dark-mode-toggle" class="dark-mode-toggle" title="Toggle dark mode" style="margin: 1em 0; width: 100%; padding: 0.5em; border: none; background: none; color: inherit; cursor: pointer; font-size: 1em;">
+                    <i class="fa-solid fa-moon"></i> <span id="dark-mode-toggle-text">Dark Mode</span>
+                </button>
                 <ul>
                     <li>
                         <a href="/dashboard" class="sidebar-link">
@@ -149,5 +152,91 @@
     </div>
     <script src="layout.js"></script>
     <script src="script.js"></script>
+    <style>
+        body.dark-mode {
+            background: #181a1b;
+            color: #e0e0e0;
+        }
+        .sidebar, .sidebar-content {
+            background: #23272a;
+        }
+        .main-content, .main-content-boxes, .box, .box-section1, .box-title, .table-container, .modal-content {
+            background: #23272a !important;
+            color: #e0e0e0 !important;
+        }
+        .sidebar-link, .sidebar-link.active {
+            color: #e0e0e0;
+        }
+        .sidebar-link.active {
+            background: #36393f;
+        }
+        .scan-status-indicator {
+            background: #23272a;
+            color: #e0e0e0;
+            border: 1px solid #36393f;
+            border-radius: 6px;
+            padding: 0.5em 1em;
+        }
+        .directory-status-sidebar, .directory-section, .directory-item {
+            background: #23272a;
+            color: #e0e0e0;
+        }
+        input, select, textarea {
+            background: #181a1b;
+            color: #e0e0e0;
+            border: 1px solid #36393f;
+        }
+        .primary-button, .secondary-button {
+            background: #36393f;
+            color: #e0e0e0;
+            border: 1px solid #23272a;
+        }
+        .primary-button:hover, .secondary-button:hover {
+            background: #23272a;
+            color: #fff;
+        }
+        .modal-content {
+            background: #23272a;
+            color: #e0e0e0;
+        }
+        .table-container table, .table-container th, .table-container td {
+            background: #23272a;
+            color: #e0e0e0;
+            border-color: #36393f;
+        }
+        .loading-animation {
+            background: #23272a;
+            color: #e0e0e0;
+        }
+    </style>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const darkModeToggle = document.getElementById('dark-mode-toggle');
+        const darkModeToggleText = document.getElementById('dark-mode-toggle-text');
+        function updateToggleUI() {
+            if (window.getDarkMode()) {
+                document.body.classList.add('dark-mode');
+                darkModeToggleText.textContent = 'Light Mode';
+                darkModeToggle.querySelector('i').classList.remove('fa-moon');
+                darkModeToggle.querySelector('i').classList.add('fa-sun');
+            } else {
+                document.body.classList.remove('dark-mode');
+                darkModeToggleText.textContent = 'Dark Mode';
+                darkModeToggle.querySelector('i').classList.remove('fa-sun');
+                darkModeToggle.querySelector('i').classList.add('fa-moon');
+            }
+        }
+        darkModeToggle.addEventListener('click', function() {
+            window.setDarkMode(!window.getDarkMode());
+            updateToggleUI();
+        });
+        window.addEventListener('storage', function(event) {
+            if (event.key === 'alfred-dark-mode') {
+                updateToggleUI();
+            }
+        });
+        updateToggleUI();
+    });
+    </script>
 </body>
 </html> 
