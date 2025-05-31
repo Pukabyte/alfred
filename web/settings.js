@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('scan-interval').value = settings.SCAN_INTERVAL || '720';
             document.getElementById('pending-deletion-grace').value = settings.PENDING_DELETION_GRACE_SECONDS || '60';
             document.getElementById('dry-run').value = (settings.DRY_RUN === 'true' || settings.DRY_RUN === true) ? 'true' : 'false';
+            document.getElementById('run-on-startup').value = (settings.RUN_ON_STARTUP === 'false' || settings.RUN_ON_STARTUP === false) ? 'false' : 'true';
         })
         .catch(error => showStatus('error', 'Failed to load settings'));
 
@@ -82,7 +83,8 @@ document.addEventListener('DOMContentLoaded', function() {
             DELETE_BEHAVIOR: document.getElementById('delete-behavior').value,
             SCAN_INTERVAL: document.getElementById('scan-interval').value,
             PENDING_DELETION_GRACE_SECONDS: document.getElementById('pending-deletion-grace').value,
-            DRY_RUN: document.getElementById('dry-run').value
+            DRY_RUN: document.getElementById('dry-run').value,
+            RUN_ON_STARTUP: document.getElementById('run-on-startup').value
         };
 
         try {
