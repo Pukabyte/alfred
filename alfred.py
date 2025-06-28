@@ -165,7 +165,7 @@ def upsert_symlink(file_path, conn=None):
                 else:
                     logger.info(f"🔗 Symlink {file_path} already exists in the database with the same target.")
             else:
-                # Check if the target exists
+                # Check if the target exists in symlinks table
                 execute_with_retry(cursor, 'SELECT ref_count FROM symlinks WHERE target = ?', (target,))
                 target_row = cursor.fetchone()
                 if target_row:
@@ -174,6 +174,14 @@ def upsert_symlink(file_path, conn=None):
                     execute_with_retry(cursor, 'INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', (file_path, target, ref_count))
                     logger.info(f"🔄 Incremented ref_count for target {target}, new ref_count is {ref_count}")
                 else:
+                    # Check if target is in pending_deletions table
+                    execute_with_retry(cursor, 'SELECT id FROM pending_deletions WHERE target = ?', (target,))
+                    pending_row = cursor.fetchone()
+                    if pending_row:
+                        # Remove from pending_deletions since it now has a reference
+                        execute_with_retry(cursor, 'DELETE FROM pending_deletions WHERE target = ?', (target,))
+                        logger.info(f"🔄 Removed target {target} from pending deletion - now has reference")
+                    
                     ref_count = 1
                     execute_with_retry(cursor, 'INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', (file_path, target, ref_count))
                     logger.info(f"🆕 Created new target entry with ref_count {ref_count}")
@@ -445,22 +453,10 @@ class SymlinkEventHandler(FileSystemEventHandler):
             # First handle the new location
             if os.path.islink(event.dest_path):
                 logger.info(f"\U0001F517 Symlink moved to: {event.dest_path}")
-                target = os.readlink(event.dest_path)
                 with get_db_connection() as conn:
-                    cursor = conn.cursor()
-                    execute_with_retry(cursor, 'SELECT ref_count FROM symlinks WHERE target = ?', (target,))
-                    target_row = cursor.fetchone()
-                    if target_row:
-                        ref_count = target_row[0] + 1
-                        execute_with_retry(cursor, 'UPDATE symlinks SET ref_count = ? WHERE target = ?', (ref_count, target))
-                        execute_with_retry(cursor, 'INSERT INTO symlinks (symlink, target, ref_count) VALUES (?, ?, ?)', 
-                                         (event.dest_path, target, ref_count))
-                        logger.info(f"\U0001F501 Updated ref_count for target {target}, new ref_count is {ref_count}")
-                    else:
-                        upsert_symlink(event.dest_path)
+                    upsert_symlink(event.dest_path, conn)
                     conn.commit()
-                    with get_db_connection() as conn:
-                        update_metrics_if_needed(conn)
+                    update_metrics_if_needed(conn)
                     conn_used = True
             # Then handle the old location
             if os.path.exists(event.src_path) and os.path.islink(event.src_path):
@@ -486,8 +482,7 @@ class SymlinkEventHandler(FileSystemEventHandler):
                             execute_with_retry(cursor, 'DELETE FROM symlinks WHERE symlink = ?', (event.src_path,))
                             logger.info(f"\U0001F501 Decremented ref_count for target {target}, new ref_count is {ref_count}")
                     conn.commit()
-                    with get_db_connection() as conn:
-                        update_metrics_if_needed(conn)
+                    update_metrics_if_needed(conn)
                     conn_used = True
             if not conn_used:
                 with get_db_connection() as conn:
@@ -782,25 +777,37 @@ def cleanup_pending_deletions():
     with get_db_connection() as conn:
         cursor = conn.cursor()
         now = int(time.time())
-        execute_with_retry(cursor, 'SELECT id, target FROM pending_deletions WHERE scheduled_time <= ?', (now,))
-        rows = cursor.fetchall()
-        for row in rows:
-            target = row[1]
-            # Check if any symlink now points to this target
-            execute_with_retry(cursor, 'SELECT COUNT(*) as count FROM symlinks WHERE target = ?', (target,))
-            count = cursor.fetchone()[0]
-            if count == 0 and os.path.exists(target):
-                try:
-                    if not DRY_RUN:
-                        os.remove(target)
-                        logger.info(f"❌ Deleted pending target file: {target}")
-                    else:
-                        logger.info(f"🟠 Dry-run: Would delete pending target file: {target}")
-                except Exception as e:
-                    logger.error(f'Error deleting pending target {target}: {e}')
-            # Remove from pending_deletions table
-            execute_with_retry(cursor, 'DELETE FROM pending_deletions WHERE id = ?', (row[0],))
-        conn.commit()
+        
+        # Start transaction to prevent race conditions
+        conn.execute('BEGIN TRANSACTION')
+        
+        try:
+            execute_with_retry(cursor, 'SELECT id, target FROM pending_deletions WHERE scheduled_time <= ?', (now,))
+            rows = cursor.fetchall()
+            for row in rows:
+                target = row[1]
+                # Check if any symlink now points to this target
+                execute_with_retry(cursor, 'SELECT COUNT(*) as count FROM symlinks WHERE target = ?', (target,))
+                count = cursor.fetchone()[0]
+                if count == 0 and os.path.exists(target):
+                    try:
+                        if not DRY_RUN:
+                            os.remove(target)
+                            logger.info(f"❌ Deleted pending target file: {target}")
+                        else:
+                            logger.info(f"🟠 Dry-run: Would delete pending target file: {target}")
+                    except Exception as e:
+                        logger.error(f'Error deleting pending target {target}: {e}')
+                # Remove from pending_deletions table
+                execute_with_retry(cursor, 'DELETE FROM pending_deletions WHERE id = ?', (row[0],))
+            
+            # Commit the transaction
+            conn.commit()
+        except Exception as e:
+            # Rollback on error
+            conn.rollback()
+            logger.error(f'Error during pending deletion cleanup: {e}')
+            raise
 
 def start_pending_deletion_cleanup():
     while True:
