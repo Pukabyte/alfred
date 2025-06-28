@@ -127,7 +127,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const icon = saveStatus.querySelector('.status-icon');
         const messageSpan = saveStatus.querySelector('.status-message');
         
-        saveStatus.className = 'save-status ' + type;
+        saveStatus.className = 'save-status visible ' + type;
         icon.className = 'status-icon fa-solid ' + (type === 'success' ? 'fa-check' : type === 'error' ? 'fa-times' : 'fa-exclamation-triangle');
         messageSpan.textContent = message;
         
