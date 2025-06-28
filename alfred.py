@@ -681,6 +681,17 @@ def reload_env_settings():
         logger.debug(traceback.format_exc())
         raise
 
+def clear_pending_deletions_on_startup():
+    """Clear all pending deletions on startup to prevent deletion of files during restart"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        execute_with_retry(cursor, 'SELECT COUNT(*) FROM pending_deletions')
+        count = cursor.fetchone()[0]
+        if count > 0:
+            execute_with_retry(cursor, 'DELETE FROM pending_deletions')
+            conn.commit()
+            logger.info(f"🧹 Cleared {count} pending deletions on startup")
+
 def main(dry_run, no_confirm, exclude_patterns):
     # Validate paths and permissions
     for symlink_directory in symlink_directories:
@@ -707,6 +718,9 @@ def main(dry_run, no_confirm, exclude_patterns):
     with get_db_connection() as conn:
         create_table(conn)
         record_metrics(conn)  # Record initial metrics
+        
+        # Clear pending deletions on startup
+        clear_pending_deletions_on_startup()
         
         # Check if we need to perform a full scan
         if should_perform_scan(conn, scan_interval):
