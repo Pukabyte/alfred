@@ -799,5 +799,25 @@ metrics_thread = threading.Thread(target=start_metrics_recording, daemon=True)
 metrics_thread.start()
 
 if __name__ == '__main__':
+    # Suppress all Flask development server logs
+    import logging
+    import os
+    
+    # Suppress werkzeug logs (Flask's underlying WSGI server)
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+    
+    # Suppress Flask app logs
+    flask_log = logging.getLogger('flask')
+    flask_log.setLevel(logging.ERROR)
+    
+    # Suppress Flask-CLI logs
+    cli_log = logging.getLogger('flask.cli')
+    cli_log.setLevel(logging.ERROR)
+    
+    # Set environment variable to suppress Flask startup messages
+    os.environ['FLASK_ENV'] = 'production'
+    os.environ['WERKZEUG_RUN_MAIN'] = 'true'
+    
     # Disable debug mode in production
-    app.run(host='0.0.0.0', port=5000, debug=False) 
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False) 
